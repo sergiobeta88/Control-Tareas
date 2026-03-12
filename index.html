@@ -1124,17 +1124,60 @@ document.addEventListener('DOMContentLoaded', () => {
     filterDatepicker.config.onChange.push(() => { renderAllTasksList(); });
     filterMeetingDatepicker.config.onChange.push(() => { renderAllMeetingsList(); });
 
-    // Inicializar: cargar desde localStorage primero (respuesta inmediata), luego Firebase actualizará
-    setFirebaseStatus('connecting', '⟳ Cargando...');
-    loadData().then(() => {
-        renderAll();
-        switchView('combined');
-        // Si Firebase no está configurado, mostramos estado local
-        if (!window._firebase || !window._firebase.enabled) {
-            setFirebaseStatus('local', '💾 Modo local (sin nube)');
-            document.getElementById('firebase-setup-banner').classList.remove('hidden');
-        }
-    });
+    // Inicializar: cargar desde localStorage primero (respuesta inmediata)
+    // Firebase actualizará cuando esté listo
+    const localData = {
+        tasks: JSON.parse(localStorage.getItem('tasks')) || [],
+        meetings: JSON.parse(localStorage.getItem('meetings')) || [],
+        allTags: JSON.parse(localStorage.getItem('allTags')) || { laboral: [], personal: [] },
+        allResponsibles: JSON.parse(localStorage.getItem('allResponsibles')) || { laboral: [], personal: [] }
+    };
+    tasks = localData.tasks;
+    meetings = localData.meetings;
+    allTags = Array.isArray(localData.allTags) ? { laboral: localData.allTags, personal: [] } : localData.allTags;
+    allResponsibles = Array.isArray(localData.allResponsibles) ? { laboral: localData.allResponsibles, personal: [] } : localData.allResponsibles;
+    checkDueDates();
+    renderAll();
+    switchView('combined');
+
+    // Intentar conectar a Firebase con timeout de 5 segundos
+    setFirebaseStatus('connecting', '⟳ Conectando a nube...');
+    const fbTimeout = setTimeout(() => {
+        setFirebaseStatus('local', '💾 Modo local (sin nube)');
+    }, 5000);
+
+    if (window._firebase && window._firebase.enabled) {
+        window._firebase.load().then(fbData => {
+            clearTimeout(fbTimeout);
+            if (fbData && fbData.tasks) {
+                tasks = fbData.tasks || [];
+                meetings = fbData.meetings || [];
+                allTags = Array.isArray(fbData.allTags) ? { laboral: fbData.allTags, personal: [] } : (fbData.allTags || { laboral: [], personal: [] });
+                allResponsibles = Array.isArray(fbData.allResponsibles) ? { laboral: fbData.allResponsibles, personal: [] } : (fbData.allResponsibles || { laboral: [], personal: [] });
+                checkDueDates();
+                renderAll();
+            }
+            setFirebaseStatus('connected', '☁ Conectado a nube');
+            // Suscribir a cambios en tiempo real
+            window._firebase.subscribe((data) => {
+                if (!data) return;
+                tasks = data.tasks || [];
+                meetings = data.meetings || [];
+                allTags = Array.isArray(data.allTags) ? { laboral: data.allTags, personal: [] } : (data.allTags || { laboral: [], personal: [] });
+                allResponsibles = Array.isArray(data.allResponsibles) ? { laboral: data.allResponsibles, personal: [] } : (data.allResponsibles || { laboral: [], personal: [] });
+                checkDueDates();
+                renderAll();
+                setFirebaseStatus('connected', '☁ Sincronizado');
+            });
+        }).catch(() => {
+            clearTimeout(fbTimeout);
+            setFirebaseStatus('offline', '⚠ Sin conexión a nube');
+        });
+    } else {
+        clearTimeout(fbTimeout);
+        setFirebaseStatus('local', '💾 Modo local (sin nube)');
+        document.getElementById('firebase-setup-banner').classList.remove('hidden');
+    }
     setInterval(checkAllAlerts, 60000);
     setInterval(updatePlannerClock, 1000);
 });
