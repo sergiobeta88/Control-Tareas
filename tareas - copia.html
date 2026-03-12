@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador de Tareas - Matriz de Eisenhower</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+        // =====================================================================
+        // 🔥 CONFIGURACIÓN FIREBASE - REEMPLAZA ESTOS VALORES CON LOS TUYOS
+        // =====================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyAZZVxx8cWgrZS5NV1B1sxrKFA8TbQB0-c",
+            authDomain: "control-tareas-85ddc.firebaseapp.com",
+            projectId: "control-tareas-85ddc",
+            storageBucket: "control-tareas-85ddc.firebasestorage.app",
+            messagingSenderId: "319188644784",
+            appId: "1:319188644784:web:8d567089d8eb472d009c75"
+        };
+        // =====================================================================
+
+        const FIREBASE_ENABLED = !firebaseConfig.apiKey.includes("TU_");
+        let db = null;
+        let unsubscribe = null;
+
+        if (FIREBASE_ENABLED) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+            } catch(e) {
+                console.warn("Firebase no pudo iniciarse:", e);
+            }
+        }
+
+        // Exponer funciones al scope global para que el script principal las use
+        window._firebase = {
+            enabled: FIREBASE_ENABLED,
+            db,
+            docRef: () => db ? doc(db, "productividad", "datos") : null,
+            save: async (data) => {
+                if (!db) return;
+                try {
+                    await setDoc(doc(db, "productividad", "datos"), data);
+                } catch(e) {
+                    console.error("Error guardando en Firebase:", e);
+                }
+            },
+            load: async () => {
+                if (!db) return null;
+                try {
+                    const snap = await getDoc(doc(db, "productividad", "datos"));
+                    return snap.exists() ? snap.data() : null;
+                } catch(e) {
+                    console.error("Error cargando desde Firebase:", e);
+                    return null;
+                }
+            },
+            subscribe: (callback) => {
+                if (!db) return;
+                if (unsubscribe) unsubscribe();
+                unsubscribe = onSnapshot(doc(db, "productividad", "datos"), (snap) => {
+                    if (snap.exists()) callback(snap.data());
+                });
+            }
+        };
+
+        // Disparar evento para avisar que Firebase está listo
+        window.dispatchEvent(new Event("firebaseReady"));
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .quadrant { min-height: 250px; transition: background-color 0.3s ease; }
+        .task-card, .meeting-card, .meeting-card-full { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .task-card:hover, .meeting-card:hover, .meeting-card-full:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05); }
+        .time-slot { cursor: cell; transition: background-color 0.1s; }
+        .time-slot:hover { background-color: rgba(59,130,246,.05); }
+        .modal { transition: opacity 0.3s ease; }
+        .modal-content { transition: transform 0.3s ease; }
+        .tag,.tag-filter,.responsible-tag { cursor: pointer; }
+        .tag.selected,.tag-filter.selected,.responsible-tag.selected { transform: scale(1.05); box-shadow: 0 0 0 2px #3b82f6; }
+        [type='date']::-webkit-calendar-picker-indicator { cursor: pointer; }
+        .subtask-item:hover .delete-subtask-btn { opacity: 1; }
+        .timer-btn.active,.view-btn.active { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06); }
+        #notification-toast { transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; }
+        #planner-clock { font-family: 'Courier New', Courier, monospace; }
+        #time-now-line { pointer-events: none; z-index: 30; transition: top 0.5s ease-in-out; }
+        .subtask-tooltip { pointer-events: none; z-index: 50; }
+        .repetitive-item { transition: background-color 0.2s; }
+        .repetitive-item:hover { background-color: #f9fafb; }
+        /* Indicador de estado Firebase */
+        #fb-status { transition: all 0.3s; }
+        #fb-status.connecting { background-color: #fef3c7; color: #92400e; border-color: #fcd34d; }
+        #fb-status.connected { background-color: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+        #fb-status.offline { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        #fb-status.local { background-color: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+<!-- Banner de configuración Firebase (visible si no está configurado) -->
+<div id="firebase-setup-banner" class="hidden bg-amber-50 border-b border-amber-300 px-4 py-3">
+    <div class="container mx-auto flex flex-col md:flex-row items-start md:items-center gap-3">
+        <div class="flex items-center gap-2 text-amber-800">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            <strong>Firebase no configurado.</strong>
+        </div>
+        <p class="text-amber-700 text-sm">Los datos se guardan localmente (caché). Para activar la nube, edita el código y reemplaza los valores en la sección <code class="bg-amber-100 px-1 rounded">firebaseConfig</code>. <a href="https://console.firebase.google.com/" target="_blank" class="underline font-semibold">Crear proyecto en Firebase →</a></p>
+        <button onclick="document.getElementById('firebase-setup-banner').classList.add('hidden')" class="ml-auto text-amber-600 hover:text-amber-800 flex-shrink-0">✕</button>
+    </div>
+</div>
+
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    <header class="text-center mb-6">
+        <h1 class="text-4xl font-bold text-gray-900">Panel de Productividad</h1>
+        <p class="text-lg text-gray-600 mt-2">Organiza tus tareas con la Matriz de Eisenhower y planifica tu semana.</p>
+        <!-- Indicador de estado Firebase -->
+        <div class="flex justify-center mt-3">
+            <div id="fb-status" class="connecting inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border">
+                <span id="fb-status-dot" class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+                <span id="fb-status-text">Conectando...</span>
+            </div>
+        </div>
+    </header>
+
+    <nav class="flex justify-center border-b-2 border-gray-200 mb-8 overflow-x-auto whitespace-nowrap">
+        <button id="show-combined-planner-btn" class="py-4 px-6 block text-blue-600 border-b-2 font-medium border-blue-600">Cronograma Combinado</button>
+        <button id="show-dashboard-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Panel Principal</button>
+        <button id="show-all-tasks-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Tareas</button>
+        <button id="show-all-meetings-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Reuniones</button>
+    </nav>
+
+    <div id="combined-planner-view">
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b pb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Cronograma Combinado</h2>
+                <div class="flex gap-4 text-xs">
+                    <div class="flex items-center"><span class="w-3 h-3 bg-blue-100 border border-blue-300 rounded mr-1.5"></span> Laboral</div>
+                    <div class="flex items-center"><span class="w-3 h-3 bg-orange-100 border border-orange-300 rounded mr-1.5"></span> Personal</div>
+                    <div class="flex items-center"><span class="w-3 h-3 bg-cyan-100 border border-cyan-300 rounded mr-1.5"></span> Reuniones</div>
+                </div>
+            </div>
+            <div id="combined-planner-container"></div>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="hidden">
+        <div class="flex justify-center gap-4 mb-8">
+            <button id="view-laboral-btn" class="view-btn active font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 transition shadow-sm">Laboral</button>
+            <button id="view-personal-btn" class="view-btn font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 transition shadow-sm">Personal</button>
+        </div>
+        <div class="flex flex-wrap justify-center gap-3 mb-8">
+            <button id="openModalBtn" class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-blue-700 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                Nueva Tarea
+            </button>
+            <div class="flex gap-3">
+                <label for="import-file" class="bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-gray-700 transition cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                    Importar
+                </label>
+                <input type="file" id="import-file" class="hidden" accept=".json">
+                <button id="export-btn" class="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-700 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                    Exportar
+                </button>
+            </div>
+        </div>
+        <div class="mb-12">
+            <h2 class="text-2xl font-bold text-center mb-6">Monitor de Reuniones</h2>
+            <div id="meetings-monitor" class="bg-white p-6 rounded-lg shadow-lg">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-gray-800">Próximas Reuniones</h3>
+                    <button id="add-meeting-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700 transition text-sm flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                        Nueva Reunión
+                    </button>
+                </div>
+                <div id="meetings-list" class="space-y-4"></div>
+            </div>
+        </div>
+        <h2 class="text-2xl font-bold text-center mb-2">Matriz de Prioridades</h2>
+        <div class="flex justify-center flex-wrap gap-x-4 gap-y-2 mb-6 text-xs text-gray-600">
+            <span class="font-medium">Estado:</span>
+            <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-1.5"></span>Agendada</div>
+            <div class="flex items-center"><span class="w-3 h-3 bg-purple-500 rounded-full mr-1.5"></span>Planificada</div>
+            <div class="flex items-center"><span class="w-3 h-3 bg-orange-400 rounded-full mr-1.5"></span>Por Planificar</div>
+            <span class="font-medium ml-4">Resaltado:</span>
+            <div class="flex items-center"><span class="w-3 h-3 bg-red-100 rounded-full mr-1.5 border border-red-300"></span>Vencida</div>
+            <div class="flex items-center"><span class="w-3 h-3 bg-purple-100 rounded-full mr-1.5 border border-purple-300"></span>Delegada</div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="quadrant bg-red-100 p-4 rounded-lg shadow-sm border border-red-200"><h3 class="text-xl font-bold text-red-800 mb-3">Atender ya</h3><div id="q1-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
+            <div class="quadrant bg-green-100 p-4 rounded-lg shadow-sm border border-green-200"><h3 class="text-xl font-bold text-green-800 mb-3">Planificar</h3><div id="q2-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
+            <div class="quadrant bg-yellow-100 p-4 rounded-lg shadow-sm border border-yellow-200"><h3 class="text-xl font-bold text-yellow-800 mb-3">Delegar</h3><div id="q3-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
+            <div class="quadrant bg-blue-100 p-4 rounded-lg shadow-sm border border-blue-200"><h3 class="text-xl font-bold text-blue-800 mb-3">Posponer</h3><div id="q4-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
+        </div>
+        <div class="mt-12"><h2 class="text-2xl font-bold text-center mb-6">Planificación del Día</h2><div id="planner-section" class="bg-white p-6 rounded-lg shadow-lg"></div></div>
+    </div>
+
+    <div id="all-tasks-view" class="hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <div class="flex justify-between items-center border-b pb-4 mb-4">
+                <h3 class="text-xl font-bold">Todas las Tareas</h3>
+                <div class="flex gap-2">
+                    <button id="openModalBtnAllTasks" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition text-sm flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+                        Nueva Tarea
+                    </button>
+                    <button id="export-pdf-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-red-700 transition text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/></svg>
+                        Exportar a PDF
+                    </button>
+                </div>
+            </div>
+            <div id="filters-container" class="mb-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div id="responsible-filter-container"></div>
+                    <div><label for="filter-importance" class="block text-sm font-medium text-gray-700">Importancia</label><select id="filter-importance" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
+                    <div><label for="filter-urgency" class="block text-sm font-medium text-gray-700">Urgencia</label><select id="filter-urgency" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
+                    <div><label for="filter-date" class="block text-sm font-medium text-gray-700">Fecha Vencimiento</label><input type="text" id="filter-date" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Filtrar por rango..."></div>
+                </div>
+                <div class="mt-4"><label class="block text-sm font-medium text-gray-700">Etiquetas</label><div id="filter-tags-container" class="flex flex-wrap gap-2 mt-2"></div></div>
+            </div>
+            <div class="flex justify-start flex-wrap gap-x-4 gap-y-2 mb-6 text-xs text-gray-600 border-t pt-4">
+                <span class="font-medium">Convenciones:</span>
+                <div class="flex items-center"><span class="w-3 h-3 bg-red-100 rounded-full mr-1.5 border border-red-300"></span>Vencida</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-yellow-100 rounded-full mr-1.5 border border-yellow-300"></span>Vence Pronto</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-orange-100 rounded-full mr-1.5 border border-orange-300"></span>No Planificada</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-purple-100 rounded-full mr-1.5 border border-purple-300"></span>Delegada</div>
+            </div>
+            <div id="all-tasks-list" class="space-y-3"></div>
+            <div class="mt-12 border-t pt-8">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <div class="flex items-center gap-4">
+                        <h3 class="text-xl font-bold text-gray-700">Historial de Tareas Completadas</h3>
+                        <button id="toggle-all-completed-tasks" class="text-xs bg-blue-100 text-blue-700 font-semibold px-3 py-1 rounded hover:bg-blue-200 transition">Ver Todo</button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                        <input type="text" id="filter-history-task-date" class="p-2 border border-gray-300 rounded-md text-sm w-full md:w-48" placeholder="Filtrar por fecha...">
+                        <div class="relative w-full md:w-64">
+                            <input type="text" id="search-completed-tasks" class="w-full p-2 pl-8 border border-gray-300 rounded-md text-sm" placeholder="Buscar por texto...">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div id="completed-tasks-list" class="space-y-3 opacity-80"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="all-meetings-view" class="hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg">
+            <div class="flex justify-between items-center border-b pb-4 mb-4">
+                <h3 class="text-xl font-bold">Todas las Reuniones</h3>
+                <input type="text" id="filter-meeting-date" class="p-2 border border-gray-300 rounded-md" placeholder="Filtrar por fecha...">
+            </div>
+            <div id="all-meetings-list" class="space-y-3"></div>
+            <div class="mt-12 border-t pt-8">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <div class="flex items-center gap-4">
+                        <h3 class="text-xl font-bold text-gray-700">Historial de Reuniones Realizadas</h3>
+                        <button id="toggle-all-completed-meetings" class="text-xs bg-blue-100 text-blue-700 font-semibold px-3 py-1 rounded hover:bg-blue-200 transition">Ver Todo</button>
+                    </div>
+                    <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                        <input type="text" id="filter-history-meeting-date" class="p-2 border border-gray-300 rounded-md text-sm w-full md:w-48" placeholder="Filtrar por fecha...">
+                        <div class="relative w-full md:w-64">
+                            <input type="text" id="search-completed-meetings" class="w-full p-2 pl-8 border border-gray-300 rounded-md text-sm" placeholder="Buscar por texto...">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
+                    </div>
+                </div>
+                <div id="completed-meetings-list" class="space-y-3 opacity-80"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modales (sin cambios) -->
+<div id="taskModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-10 z-50 hidden opacity-0 overflow-y-auto">
+    <div id="modal-content" class="modal-content bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-2xl transform scale-95">
+        <form id="taskForm">
+            <input type="hidden" id="taskId">
+            <h2 id="modal-title" class="text-2xl font-bold mb-6">Nueva Tarea</h2>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div><label for="taskType" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Tarea</label><select id="taskType" class="w-full p-2 border border-gray-300 rounded-md"><option value="laboral">Laboral</option><option value="personal">Personal</option></select></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">Configuración Especial</label><label class="flex items-center h-10 border border-gray-300 rounded-md px-3 bg-gray-50 cursor-pointer"><input type="checkbox" id="isRepetitive" class="h-4 w-4 text-blue-600 border-gray-300 rounded"><span class="ml-2 text-xs text-gray-900 font-semibold">Tarea Repetitiva (Diaria)</span></label></div>
+            </div>
+            <div class="mb-4"><label for="description" class="block text-sm font-medium text-gray-700 mb-1">Descripción</label><textarea id="description" rows="3" class="w-full p-2 border border-gray-300 rounded-md" required></textarea></div>
+            <div id="progress-container-modal" class="mb-4"><label for="progress" class="block text-sm font-medium text-gray-700 mb-1">Avance</label><div class="flex items-center gap-2"><input type="range" id="progress" min="0" max="100" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"><span id="progress-label" class="text-sm font-medium w-12 text-right">0%</span></div></div>
+            <div class="mb-4"><label for="taskSize" class="block text-sm font-medium text-gray-700 mb-1">Tamaño de Tarea</label><select id="taskSize" class="w-full p-2 border border-gray-300 rounded-md" required><option value="Pequeña">Pequeña</option><option value="Mediana">Mediana</option><option value="Grande">Grande</option></select></div>
+            <div class="grid grid-cols-2 gap-4 mb-4"><div><label class="block text-sm font-medium text-gray-700 mb-1">Importancia</label><select id="importance" class="w-full p-2 border border-gray-300 rounded-md"></select></div><div><label class="block text-sm font-medium text-gray-700 mb-1">Urgencia</label><select id="urgency" class="w-full p-2 border border-gray-300 rounded-md"></select></div></div>
+            <div id="date-controls-container" class="grid grid-cols-2 gap-4 mb-4">
+                <div><label for="dueDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha Vencimiento</label><input type="text" id="dueDate" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+                <div id="planned-date-container"><label for="plannedDate" class="block text-sm font-medium text-gray-700 mb-1">Asignar a un día</label><input type="text" id="plannedDate" class="w-full p-2 border border-gray-300 rounded-md" placeholder="Opcional..."></div>
+            </div>
+            <div id="time-container-modal" class="grid grid-cols-2 gap-4 mb-4 hidden">
+                <div><label for="startTime" class="block text-sm font-medium text-gray-700 mb-1">Hora de Inicio</label><input type="text" id="startTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                <div><label for="endTime" class="block text-sm font-medium text-gray-700 mb-1">Hora de Fin</label><input type="text" id="endTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
+            </div>
+            <div class="mb-4">
+                <label for="responsible-select" class="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
+                <select id="responsible-select" class="w-full p-2 border border-gray-300 rounded-md"></select>
+                <div class="flex gap-2 mt-2"><input type="text" id="new-responsible-input" placeholder="O crear nuevo responsable..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-responsible-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
+            </div>
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-1"><label for="tags-select" class="block text-sm font-medium text-gray-700">Etiquetas</label><button type="button" id="manage-tags-btn" class="text-xs text-blue-600 hover:underline">Administrar</button></div>
+                <select id="tags-select" multiple class="w-full p-2 border border-gray-300 rounded-md h-24"></select>
+                <div class="flex gap-2 mt-2"><input type="text" id="new-tag-input" placeholder="O crear nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-tag-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
+            </div>
+            <div id="delegated-container" class="mb-6"><label class="flex items-center"><input type="checkbox" id="isDelegated" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"><span class="ml-2 text-sm text-gray-900">Marcar como Delegada</span></label></div>
+            <div class="border-t pt-4 mt-6">
+                <h3 class="text-lg font-medium text-gray-800 mb-3">Checklist de Subtareas</h3>
+                <div id="subtasks-list" class="space-y-2 mb-3"></div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input type="text" id="new-subtask-text" placeholder="Nueva subtarea..." class="flex-grow p-2 border border-gray-300 rounded-md">
+                    <input type="text" id="new-subtask-responsible" placeholder="Responsable (opc)..." class="p-2 border border-gray-300 rounded-md">
+                    <button type="button" id="add-subtask-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Añadir Subtarea</button>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-8">
+                <button type="button" id="deleteTaskBtn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
+                <button type="button" id="closeModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
+                <button type="submit" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md">Guardar Tarea</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="meetingModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
+    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-md transform scale-95">
+        <form id="meetingForm">
+            <input type="hidden" id="meetingId">
+            <h2 id="meeting-modal-title" class="text-2xl font-bold mb-6">Nueva Reunión</h2>
+            <div class="mb-4"><label for="meetingType" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Reunión</label><select id="meetingType" class="w-full p-2 border border-gray-300 rounded-md"><option value="laboral">Laboral</option><option value="personal">Personal</option></select></div>
+            <div class="mb-4"><label for="meetingTitle" class="block text-sm font-medium text-gray-700 mb-1">Título de la Reunión</label><input type="text" id="meetingTitle" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+            <div class="mb-4"><label for="meetingDate" class="block text-sm font-medium text-gray-700 mb-1">Fecha</label><input type="text" id="meetingDate" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div><label for="meetingStartTime" class="block text-sm font-medium text-gray-700 mb-1">Hora Inicio</label><input type="text" id="meetingStartTime" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+                <div><label for="meetingEndTime" class="block text-sm font-medium text-gray-700 mb-1">Hora Fin</label><input type="text" id="meetingEndTime" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+            </div>
+            <div class="flex justify-end gap-3 mt-8">
+                <button type="button" id="deleteMeetingBtn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
+                <button type="button" id="closeMeetingModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
+                <button type="submit" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md">Guardar Reunión</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="scheduleModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
+    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm transform scale-95">
+        <form id="scheduleForm">
+            <input type="hidden" id="scheduleTaskId">
+            <h2 id="schedule-modal-title" class="text-2xl font-bold mb-6">Agendar Tarea</h2>
+            <p id="schedule-task-description" class="mb-4 p-2 bg-gray-100 rounded"></p>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div><label for="scheduleStartTime" class="block text-sm font-medium text-gray-700 mb-1">Hora Inicio</label><input type="text" id="scheduleStartTime" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+                <div><label for="scheduleEndTime" class="block text-sm font-medium text-gray-700 mb-1">Hora Fin</label><input type="text" id="scheduleEndTime" class="w-full p-2 border border-gray-300 rounded-md" required></div>
+            </div>
+            <div class="flex justify-end gap-3 mt-8">
+                <button type="button" id="closeScheduleModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
+                <button type="submit" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md">Agendar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="tagManagementModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
+    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-md transform scale-95">
+        <h2 class="text-2xl font-bold mb-6">Administrar Etiquetas</h2>
+        <div id="tag-management-list" class="space-y-2 max-h-64 overflow-y-auto"></div>
+        <div class="flex justify-end gap-3 mt-8"><button type="button" id="closeTagManagementModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cerrar</button></div>
+    </div>
+</div>
+
+<div id="notification-toast" class="fixed bottom-28 right-5 bg-gray-800 text-white py-3 px-5 rounded-lg shadow-xl opacity-0 transform translate-y-10 z-50">
+    <p id="notification-message"></p>
+</div>
+
+<div id="floating-timer-container" class="fixed bottom-5 right-5 bg-white p-2.5 rounded-lg shadow-xl w-40 z-40">
+    <div class="flex justify-between items-center mb-1"><h4 class="font-bold text-gray-800 text-[10px] uppercase tracking-wider">Pomodoro</h4></div>
+    <div class="flex justify-center gap-0.5 mb-2">
+        <button id="pomodoro-mode-btn" class="timer-btn active font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700 transition">Pom</button>
+        <button id="short-break-mode-btn" class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700 transition">S</button>
+        <button id="long-break-mode-btn" class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700 transition">L</button>
+    </div>
+    <div id="timer-display" class="text-2xl font-bold text-center my-1 text-gray-800 tabular-nums">25:00</div>
+    <div class="flex flex-col gap-1">
+        <button id="start-pause-timer-btn" class="bg-blue-600 text-white font-bold py-1 px-2 rounded shadow-sm hover:bg-blue-700 transition text-[9px]">INICIAR</button>
+        <button id="reset-timer-btn" class="bg-gray-500 text-white font-bold py-1 px-2 rounded shadow-sm hover:bg-gray-600 transition text-[9px]">REINICIAR</button>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    // =========================================================================
+    // CAPA DE PERSISTENCIA: Firebase + localStorage como respaldo
+    // =========================================================================
+    let _fbReady = false;
+    let _pendingSave = null;  // guarda el último dato pendiente si Firebase aún no cargó
+
+    const setFirebaseStatus = (state, text) => {
+        const el = document.getElementById('fb-status');
+        const txt = document.getElementById('fb-status-text');
+        if (!el || !txt) return;
+        el.className = `inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${state}`;
+        txt.textContent = text;
+    };
+
+    const DB = {
+        // Guarda en localStorage Y en Firebase (si está disponible)
+        save: async (data) => {
+            // Siempre guardar en localStorage como respaldo
+            localStorage.setItem('tasks', JSON.stringify(data.tasks));
+            localStorage.setItem('meetings', JSON.stringify(data.meetings));
+            localStorage.setItem('allTags', JSON.stringify(data.allTags));
+            localStorage.setItem('allResponsibles', JSON.stringify(data.allResponsibles));
+
+            // Intentar guardar en Firebase
+            if (window._firebase && window._firebase.enabled && _fbReady) {
+                try {
+                    await window._firebase.save(data);
+                    setFirebaseStatus('connected', '☁ Guardado en nube');
+                } catch(e) {
+                    setFirebaseStatus('offline', '⚠ Error al guardar en nube');
+                    console.error("Firebase save error:", e);
+                }
+            }
+        },
+
+        // Carga: prioriza Firebase, usa localStorage como fallback
+        load: async () => {
+            if (window._firebase && window._firebase.enabled) {
+                try {
+                    const fbData = await window._firebase.load();
+                    if (fbData && fbData.tasks) {
+                        // Sincronizar localStorage con los datos de Firebase
+                        localStorage.setItem('tasks', JSON.stringify(fbData.tasks || []));
+                        localStorage.setItem('meetings', JSON.stringify(fbData.meetings || []));
+                        localStorage.setItem('allTags', JSON.stringify(fbData.allTags || { laboral: [], personal: [] }));
+                        localStorage.setItem('allResponsibles', JSON.stringify(fbData.allResponsibles || { laboral: [], personal: [] }));
+                        setFirebaseStatus('connected', '☁ Conectado a nube');
+                        return fbData;
+                    }
+                } catch(e) {
+                    setFirebaseStatus('offline', '⚠ Sin conexión a nube');
+                }
+            }
+            // Fallback a localStorage
+            return {
+                tasks: JSON.parse(localStorage.getItem('tasks')) || [],
+                meetings: JSON.parse(localStorage.getItem('meetings')) || [],
+                allTags: JSON.parse(localStorage.getItem('allTags')) || { laboral: [], personal: [] },
+                allResponsibles: JSON.parse(localStorage.getItem('allResponsibles')) || { laboral: [], personal: [] }
+            };
+        }
+    };
+
+    // Cuando Firebase está listo, cargar y re-renderizar
+    window.addEventListener('firebaseReady', async () => {
+        _fbReady = true;
+        if (window._firebase && window._firebase.enabled) {
+            setFirebaseStatus('connecting', '⟳ Sincronizando...');
+            // Re-cargar datos desde Firebase y actualizar la vista
+            const fbData = await DB.load();
+            if (fbData) {
+                tasks = fbData.tasks || [];
+                meetings = fbData.meetings || [];
+                allTags = (Array.isArray(fbData.allTags)) ? { laboral: fbData.allTags, personal: [] } : (fbData.allTags || { laboral: [], personal: [] });
+                allResponsibles = (Array.isArray(fbData.allResponsibles)) ? { laboral: fbData.allResponsibles, personal: [] } : (fbData.allResponsibles || { laboral: [], personal: [] });
+                checkDueDates();
+                renderAll();
+            }
+            // Suscribir a cambios en tiempo real (para múltiples usuarios/pestañas)
+            window._firebase.subscribe((data) => {
+                if (!data) return;
+                tasks = data.tasks || [];
+                meetings = data.meetings || [];
+                allTags = (Array.isArray(data.allTags)) ? { laboral: data.allTags, personal: [] } : (data.allTags || { laboral: [], personal: [] });
+                allResponsibles = (Array.isArray(data.allResponsibles)) ? { laboral: data.allResponsibles, personal: [] } : (data.allResponsibles || { laboral: [], personal: [] });
+                checkDueDates();
+                renderAll();
+                setFirebaseStatus('connected', '☁ Sincronizado');
+            });
+        } else {
+            setFirebaseStatus('local', '💾 Modo local (sin nube)');
+            document.getElementById('firebase-setup-banner').classList.remove('hidden');
+        }
+    });
+
+    // =========================================================================
+    // LÓGICA PRINCIPAL DE LA APP (sin cambios respecto al original)
+    // =========================================================================
+    const dom = {
+        showDashboardBtn: document.getElementById('show-dashboard-btn'),
+        showAllTasksBtn: document.getElementById('show-all-tasks-btn'),
+        showCombinedPlannerBtn: document.getElementById('show-combined-planner-btn'),
+        dashboardView: document.getElementById('dashboard-view'),
+        allTasksView: document.getElementById('all-tasks-view'),
+        combinedPlannerView: document.getElementById('combined-planner-view'),
+        combinedPlannerContainer: document.getElementById('combined-planner-container'),
+        taskModal: document.getElementById('taskModal'),
+        modalContent: document.getElementById('modal-content'),
+        openModalBtn: document.getElementById('openModalBtn'),
+        closeModalBtn: document.getElementById('closeModalBtn'),
+        taskForm: document.getElementById('taskForm'),
+        deleteTaskBtn: document.getElementById('deleteTaskBtn'),
+        q1Tasks: document.getElementById('q1-tasks'),
+        q2Tasks: document.getElementById('q2-tasks'),
+        q3Tasks: document.getElementById('q3-tasks'),
+        q4Tasks: document.getElementById('q4-tasks'),
+        newTagInput: document.getElementById('new-tag-input'),
+        addTagBtn: document.getElementById('add-tag-btn'),
+        newResponsibleInput: document.getElementById('new-responsible-input'),
+        addResponsibleBtn: document.getElementById('add-responsible-btn'),
+        plannerSection: document.getElementById('planner-section'),
+        allTasksList: document.getElementById('all-tasks-list'),
+        completedTasksList: document.getElementById('completed-tasks-list'),
+        searchCompletedTasks: document.getElementById('search-completed-tasks'),
+        toggleAllCompletedTasks: document.getElementById('toggle-all-completed-tasks'),
+        filterHistoryTaskDate: document.getElementById('filter-history-task-date'),
+        allMeetingsList: document.getElementById('all-meetings-list'),
+        completedMeetingsList: document.getElementById('completed-meetings-list'),
+        searchCompletedMeetings: document.getElementById('search-completed-meetings'),
+        toggleAllCompletedMeetings: document.getElementById('toggle-all-completed-meetings'),
+        filterHistoryMeetingDate: document.getElementById('filter-history-meeting-date'),
+        filterImportance: document.getElementById('filter-importance'),
+        filterUrgency: document.getElementById('filter-urgency'),
+        filterTagsContainer: document.getElementById('filter-tags-container'),
+        responsibleFilterContainer: document.getElementById('responsible-filter-container'),
+        exportBtn: document.getElementById('export-btn'),
+        exportPdfBtn: document.getElementById('export-pdf-btn'),
+        importFile: document.getElementById('import-file'),
+        isDelegatedCheckbox: document.getElementById('isDelegated'),
+        isRepetitiveCheckbox: document.getElementById('isRepetitive'),
+        plannedDateContainer: document.getElementById('planned-date-container'),
+        dateControlsContainer: document.getElementById('date-controls-container'),
+        delegatedContainer: document.getElementById('delegated-container'),
+        timeContainerModal: document.getElementById('time-container-modal'),
+        subtasksList: document.getElementById('subtasks-list'),
+        newSubtaskText: document.getElementById('new-subtask-text'),
+        newSubtaskResponsible: document.getElementById('new-subtask-responsible'),
+        addSubtaskBtn: document.getElementById('add-subtask-btn'),
+        modalTitle: document.getElementById('modal-title'),
+        meetingsList: document.getElementById('meetings-list'),
+        addMeetingBtn: document.getElementById('add-meeting-btn'),
+        meetingModal: document.getElementById('meetingModal'),
+        meetingForm: document.getElementById('meetingForm'),
+        closeMeetingModalBtn: document.getElementById('closeMeetingModalBtn'),
+        deleteMeetingBtn: document.getElementById('deleteMeetingBtn'),
+        meetingModalTitle: document.getElementById('meeting-modal-title'),
+        responsibleSelect: document.getElementById('responsible-select'),
+        tagsSelect: document.getElementById('tags-select'),
+        scheduleModal: document.getElementById('scheduleModal'),
+        scheduleForm: document.getElementById('scheduleForm'),
+        closeScheduleModalBtn: document.getElementById('closeScheduleModalBtn'),
+        scheduleTaskDescription: document.getElementById('schedule-task-description'),
+        notificationToast: document.getElementById('notification-toast'),
+        notificationMessage: document.getElementById('notification-message'),
+        timerDisplay: document.getElementById('timer-display'),
+        startPauseTimerBtn: document.getElementById('start-pause-timer-btn'),
+        resetTimerBtn: document.getElementById('reset-timer-btn'),
+        pomodoroModeBtn: document.getElementById('pomodoro-mode-btn'),
+        shortBreakModeBtn: document.getElementById('short-break-mode-btn'),
+        longBreakModeBtn: document.getElementById('long-break-mode-btn'),
+        viewLaboralBtn: document.getElementById('view-laboral-btn'),
+        viewPersonalBtn: document.getElementById('view-personal-btn'),
+        progressContainerModal: document.getElementById('progress-container-modal'),
+        progressLabel: document.getElementById('progress-label'),
+        showAllMeetingsBtn: document.getElementById('show-all-meetings-btn'),
+        allMeetingsView: document.getElementById('all-meetings-view'),
+        filterMeetingDate: document.getElementById('filter-meeting-date'),
+        manageTagsBtn: document.getElementById('manage-tags-btn'),
+        tagManagementModal: document.getElementById('tagManagementModal'),
+        tagManagementList: document.getElementById('tag-management-list'),
+        closeTagManagementModalBtn: document.getElementById('closeTagManagementModalBtn'),
+        openModalBtnAllTasks: document.getElementById('openModalBtnAllTasks'),
+    };
+
+    let tasks = [];
+    let meetings = [];
+    let allTags = { laboral: [], personal: [] };
+    let allResponsibles = { laboral: [], personal: [] };
+    let currentSubtasks = [];
+    let filters = { importance: 'all', urgency: 'all', tag: null, dateRange: [], responsible: 'all', completedTaskSearch: '', completedMeetingSearch: '', showAllCompletedTasks: false, showAllCompletedMeetings: false, historyTaskDateRange: [], historyMeetingDateRange: [] };
+    let firedAlerts = new Set();
+    let currentView = 'laboral';
+
+    const TIMER_MODES = { pomodoro: 25 * 60, shortBreak: 5 * 60, longBreak: 15 * 60 };
+    let timerMode = 'pomodoro';
+    let timeRemaining = TIMER_MODES[timerMode];
+    let isTimerRunning = false;
+    let timerIntervalId = null;
+    let timerEndTime = 0;
+
+    const commonFlatpickrConfig = {
+        dateFormat: "Y-m-d", altInput: true, altFormat: "D, M j, Y",
+        locale: {
+            firstDayOfWeek: 1,
+            weekdays: { shorthand: ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"], longhand: ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] },
+            months: { shorthand: ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"], longhand: ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] }
+        },
+        onChange: function(selectedDates, dateStr, instance) {
+            if (instance.element.id === 'plannedDate') {
+                if (dateStr) { dom.timeContainerModal.classList.remove('hidden'); }
+                else { dom.timeContainerModal.classList.add('hidden'); startTimepicker.clear(); endTimepicker.clear(); }
+            }
+        }
+    };
+
+    const timePickerConfig = { enableTime: true, noCalendar: true, dateFormat: "H:i", time_24hr: true, minuteIncrement: 15 };
+
+    const dueDatepicker = flatpickr("#dueDate", commonFlatpickrConfig);
+    const plannedDatepicker = flatpickr("#plannedDate", commonFlatpickrConfig);
+    const filterDatepicker = flatpickr("#filter-date", { ...commonFlatpickrConfig, mode: "range", onChange: [] });
+    const filterMeetingDatepicker = flatpickr("#filter-meeting-date", { ...commonFlatpickrConfig, mode: "range", onChange: [] });
+    const meetingDatepicker = flatpickr("#meetingDate", { ...commonFlatpickrConfig, onChange: [] });
+    const historyTaskDatepicker = flatpickr("#filter-history-task-date", { ...commonFlatpickrConfig, mode: "range", onChange: (dates) => { filters.historyTaskDateRange = dates; renderAllTasksList(); } });
+    const historyMeetingDatepicker = flatpickr("#filter-history-meeting-date", { ...commonFlatpickrConfig, mode: "range", onChange: (dates) => { filters.historyMeetingDateRange = dates; renderAllMeetingsList(); } });
+    const meetingStartTimePicker = flatpickr("#meetingStartTime", { ...timePickerConfig, time_24hr: false, onChange: function(selectedDates, dateStr) { if (selectedDates.length > 0) { meetingEndTimePicker.setDate(selectedDates[0], false); meetingEndTimePicker.set('minTime', dateStr); } } });
+    const meetingEndTimePicker = flatpickr("#meetingEndTime", { ...timePickerConfig, time_24hr: false });
+    const startTimepicker = flatpickr("#startTime", { ...timePickerConfig, onChange: function(selectedDates) { if (selectedDates.length > 0) { endTimepicker.setDate(selectedDates[0], false); } } });
+    const endTimepicker = flatpickr("#endTime", timePickerConfig);
+    const scheduleStartTimePicker = flatpickr("#scheduleStartTime", { ...timePickerConfig, onChange: function(selectedDates) { if (selectedDates.length > 0) { scheduleEndTimePicker.setDate(selectedDates[0], false); } } });
+    const scheduleEndTimePicker = flatpickr("#scheduleEndTime", timePickerConfig);
+    const rescheduleDatePicker = flatpickr(document.createElement('input'), { ...commonFlatpickrConfig, onChange: [] });
+
+    const switchView = (viewToShow) => {
+        dom.dashboardView.classList.toggle('hidden', viewToShow !== 'dashboard');
+        dom.allTasksView.classList.toggle('hidden', viewToShow !== 'tasks');
+        dom.allMeetingsView.classList.toggle('hidden', viewToShow !== 'meetings');
+        dom.combinedPlannerView.classList.toggle('hidden', viewToShow !== 'combined');
+        [['showDashboardBtn','dashboard'],['showCombinedPlannerBtn','combined'],['showAllTasksBtn','tasks'],['showAllMeetingsBtn','meetings']].forEach(([btn, view]) => {
+            dom[btn].classList.toggle('text-blue-600', viewToShow === view);
+            dom[btn].classList.toggle('border-blue-600', viewToShow === view);
+            dom[btn].classList.toggle('text-gray-500', viewToShow !== view);
+            dom[btn].classList.toggle('border-b-2', viewToShow === view);
+        });
+    };
+
+    const setMainView = (view) => {
+        currentView = view;
+        dom.viewLaboralBtn.classList.toggle('active', currentView === 'laboral');
+        dom.viewPersonalBtn.classList.toggle('active', currentView === 'personal');
+        renderAll();
+    };
+
+    // ---- PERSISTENCIA: reemplaza saveData / loadData originales ----
+    const saveData = () => {
+        const data = { tasks, meetings, allTags, allResponsibles };
+        DB.save(data); // Guarda en localStorage + Firebase
+    };
+
+    const loadData = async () => {
+        setFirebaseStatus('connecting', '⟳ Cargando...');
+        const data = await DB.load();
+        tasks = data.tasks || [];
+        meetings = data.meetings || [];
+        allTags = (Array.isArray(data.allTags)) ? { laboral: data.allTags, personal: [] } : (data.allTags || { laboral: [], personal: [] });
+        allResponsibles = (Array.isArray(data.allResponsibles)) ? { laboral: data.allResponsibles, personal: [] } : (data.allResponsibles || { laboral: [], personal: [] });
+        checkDueDates();
+    };
+    // ----------------------------------------------------------------
+
+    const checkDueDates = () => {
+        const today = new Date(); today.setHours(0,0,0,0);
+        const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+        let updated = false;
+        tasks.forEach(task => { if (task.dueDate && new Date(task.dueDate) <= tomorrow && !task.isUrgent) { task.isUrgent = true; updated = true; } });
+        if (updated) saveData();
+    };
+
+    const formatDateDisplay = (dateStr) => {
+        if (!dateStr) return 'N/A';
+        const date = new Date(dateStr + 'T00:00:00');
+        return date.toLocaleDateString('es-ES', { weekday: 'short', month: 'short', day: 'numeric' });
+    };
+    const parseTime = timeStr => { if (!timeStr) return 0; const [h, m] = timeStr.split(':').map(Number); return h + m / 60; };
+
+    const updatePlannerClock = () => {
+        const clockEls = document.querySelectorAll('#planner-clock');
+        const now = new Date();
+        clockEls.forEach(el => { el.textContent = now.toLocaleTimeString('es-ES', { hour12: false }); });
+        document.querySelectorAll('#time-now-line').forEach(timeLine => {
+            if (timeLine) {
+                const startHour = 6; const hourHeight = 40;
+                const h = now.getHours(); const m = now.getMinutes();
+                if (h >= startHour && h <= 23) { timeLine.style.top = ((h - startHour) * hourHeight + (m / 60) * hourHeight) + 'px'; timeLine.style.display = 'block'; }
+                else { timeLine.style.display = 'none'; }
+            }
+        });
+    };
+
+    const renderAll = () => {
+        renderMatrix(); renderPlanner(); renderCombinedPlanner(); renderMeetingMonitor();
+        populateModalSelects(); renderFilters(); renderAllTasksList(); renderAllMeetingsList();
+    };
+
+    const getTaskCardHighlight = (task) => task.isDelegated ? 'bg-purple-100 border-purple-300' : '';
+
+    const renderMatrixTaskCard = (task) => {
+        let indicatorHtml = '';
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (!task.isDelegated) {
+            if (task.plannedDate) {
+                const plannedDate = new Date(task.plannedDate + 'T00:00:00');
+                if (task.startTime && task.endTime) { indicatorHtml = `<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="Agendada"></div>`; }
+                else if (plannedDate < today && task.progress < 100) { indicatorHtml = `<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" title="Planificación Vencida"></div>`; }
+                else { indicatorHtml = `<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white" title="Planificada"></div>`; }
+            } else { indicatorHtml = `<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" title="No planificada"></div>`; }
+        }
+        const isOverdue = task.dueDate && new Date(task.dueDate + 'T00:00:00') < today && task.progress < 100;
+        let hlClass = 'bg-white';
+        if (isOverdue) hlClass = 'bg-red-100 border-red-300';
+        else if (task.isDelegated) hlClass = 'bg-purple-100 border-purple-300';
+        return `<div class="task-card relative p-2 rounded-md shadow-sm border ${hlClass}" data-id="${task.id}">${indicatorHtml}<p class="font-medium text-sm pr-4 truncate" title="${task.description}">${task.description}</p><p class="text-xs text-gray-500 mt-1">Vence: ${formatDateDisplay(task.dueDate)}</p></div>`;
+    };
+
+    const renderMatrix = () => {
+        ['q1Tasks','q2Tasks','q3Tasks','q4Tasks'].forEach(q => dom[q].innerHTML = '');
+        const today = new Date(); today.setHours(0,0,0,0);
+        const fiveDays = new Date(today); fiveDays.setDate(today.getDate() + 5);
+        tasks.filter(t => { if (t.progress === 100 || t.isRepetitive) return false; return currentView === 'laboral' ? (!t.type || t.type === 'laboral') : t.type === currentView; })
+            .forEach(task => {
+                const due = new Date(task.dueDate + 'T00:00:00');
+                const soon = due <= fiveDays;
+                const html = renderMatrixTaskCard(task);
+                if (task.isUrgent && task.isImportant) (soon ? dom.q1Tasks : dom.q2Tasks).insertAdjacentHTML('beforeend', html);
+                else if (!task.isUrgent && task.isImportant) dom.q2Tasks.insertAdjacentHTML('beforeend', html);
+                else if (task.isUrgent && !task.isImportant) dom.q3Tasks.insertAdjacentHTML('beforeend', html);
+                else dom.q4Tasks.insertAdjacentHTML('beforeend', html);
+            });
+    };
+
+    const renderEventLayout = (events, startHour, endHour, hourHeight, isCombined = false) => {
+        return events.map(ev => {
+            const { start, end } = ev; const dur = end - start;
+            if (start >= startHour && start < endHour + 1 && dur > 0) {
+                const top = (start - startHour) * hourHeight; const height = dur * hourHeight;
+                const layout = ev.layout || { width: 100, left: 0 };
+                if (ev.type === 'task') {
+                    const done = ev.progress === 100;
+                    let hlClass = done ? 'bg-green-100 border-green-300 text-gray-700' : (getTaskCardHighlight(ev) || 'bg-blue-100 border-blue-300 text-blue-900');
+                    if (isCombined && !done) hlClass = ev.taskType === 'laboral' ? 'bg-blue-100 border-blue-300 text-blue-900' : 'bg-orange-100 border-orange-300 text-orange-900';
+                    const progressHtml = done
+                        ? `<div class="text-center"><span class="text-xs font-bold text-green-700">COMPLETADA ✔</span></div>`
+                        : `<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 bg-gray-300/50 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px] font-medium">${ev.progress}%</span></div>`;
+                    const small = dur < 0.75;
+                    const subtipsHtml = ev.subtasks && ev.subtasks.length > 0
+                        ? `<div class="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 text-gray-800 p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60] subtask-tooltip"><p class="font-bold border-b border-gray-100 mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s => `<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted ? 'bg-green-500 border-green-600 text-white' : 'border-gray-300'}">${s.isCompleted ? '✓' : ''}</span><span class="${s.isCompleted ? 'line-through text-gray-400' : ''}">${s.text}</span></div>`).join('')}</div>` : '';
+                    return `<div class="task-card group absolute p-2 rounded border ${hlClass} overflow-visible flex flex-col justify-center transition-all" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${layout.width}% - 4px);left:${layout.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${small ? 'text-[9px]' : 'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done && !small) ? `<div class="w-20 flex-shrink-0">${progressHtml}</div>` : ''}</div>${(done || small) ? '' : progressHtml}${subtipsHtml}</div>`;
+                } else {
+                    const done = ev.completed;
+                    const hlClass = done ? 'bg-green-200 border-green-400' : 'bg-cyan-100 border-cyan-300 text-cyan-900';
+                    return `<div class="meeting-card absolute p-2 rounded border ${hlClass} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${layout.width}% - 4px);left:${layout.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
+                }
+            }
+            return '';
+        }).join('');
+    };
+
+    const calculateLayoutLogic = (events) => {
+        if (!events.length) return;
+        events.sort((a, b) => a.start - b.start || b.end - a.end);
+        let cols = [];
+        events.forEach(ev => {
+            let placed = false;
+            for (let i = 0; i < cols.length; i++) {
+                if (cols[i].length > 0 && cols[i][cols[i].length-1].end <= ev.start) { cols[i].push(ev); ev.layout = { col: i }; placed = true; break; }
+            }
+            if (!placed) { cols.push([ev]); ev.layout = { col: cols.length - 1 }; }
+        });
+        const n = cols.length;
+        events.forEach(ev => { ev.layout.width = 100 / n; ev.layout.left = ev.layout.col * ev.layout.width; });
+    };
+
+    const renderRepetitiveChecklist = (dateStr, showAll = false) => {
+        const rep = tasks.filter(t => { if (!t.isRepetitive) return false; if (showAll) return true; return currentView === 'laboral' ? (!t.type || t.type === 'laboral') : t.type === currentView; });
+        if (!rep.length) return '';
+        let html = `<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-6"><h4 class="font-bold text-indigo-800 mb-2 text-xs uppercase tracking-wider flex items-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg> Checklist Diario</h4><div class="space-y-1.5">`;
+        if (showAll) rep.sort((a, b) => (a.type === 'personal' ? 1 : -1));
+        rep.forEach(task => {
+            const done = task.completedDates && task.completedDates.includes(dateStr);
+            const typeInd = showAll ? `<span class="text-[9px] font-bold ${task.type === 'personal' ? 'text-orange-600' : 'text-blue-600'} mr-1.5">[${task.type === 'personal' ? 'P' : 'L'}]</span>` : '';
+            html += `<div class="repetitive-item flex items-center p-2 bg-white rounded border border-indigo-100 shadow-sm"><input type="checkbox" data-id="${task.id}" data-date="${dateStr}" class="repetitive-cb h-4 w-4 text-indigo-600 rounded cursor-pointer" ${done ? 'checked' : ''}><span class="ml-2 text-[11px] font-medium flex-grow ${done ? 'line-through text-gray-400' : 'text-gray-700'}">${typeInd}${task.description}</span><button type="button" class="edit-repetitive-btn ml-2 text-gray-400 hover:text-indigo-600" data-id="${task.id}"><svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg></button></div>`;
+        });
+        return html + `</div></div>`;
+    };
+
+    const renderPlanner = () => {
+        const today = new Date(); today.setHours(0,0,0,0); const todayStr = today.toISOString().split('T')[0];
+        const todayName = today.toLocaleDateString('es-ES', { weekday: 'long' });
+        const startHour = 6; const endHour = currentView === 'laboral' ? 17 : 23; const hourHeight = 40;
+        let timeSlotsHtml = '';
+        for (let i = startHour; i <= endHour; i++) {
+            const label = i > 12 ? `${i-12} PM` : (i === 12 ? '12 PM' : `${i} AM`);
+            timeSlotsHtml += `<div class="time-slot relative flex items-start" style="height:${hourHeight}px;" data-time="${i<10?'0'+i:i}:00"><div class="text-right w-12 pr-2 text-sm text-gray-400 -mt-2">${label}</div><div class="flex-grow border-t border-gray-200"></div></div>`;
+        }
+        const todayTasks = tasks.filter(t => { const mv = currentView === 'laboral' ? (!t.type || t.type === 'laboral') : t.type === currentView; return t.plannedDate === todayStr && !t.isDelegated && !t.isRepetitive && mv; });
+        const scheduledTasks = todayTasks.filter(t => t.startTime && t.endTime);
+        const unscheduledTasks = todayTasks.filter(t => !t.startTime || !t.endTime);
+        const todayMeetings = meetings.filter(m => { const mv = currentView === 'laboral' ? (!m.type || m.type === 'laboral') : m.type === currentView; return m.date === todayStr && mv; });
+        const allEvents = [...scheduledTasks.map(t => ({...t, type:'task', title:t.description})), ...todayMeetings.map(m => ({...m, type:'meeting'}))];
+        const processed = allEvents.map(e => ({...e, start:parseTime(e.startTime), end:parseTime(e.endTime)}));
+        let groups = [];
+        if (processed.length > 0) {
+            processed.sort((a,b) => a.start-b.start);
+            let cur = [processed[0]], gEnd = processed[0].end;
+            for (let i = 1; i < processed.length; i++) { if (processed[i].start < gEnd) { cur.push(processed[i]); gEnd = Math.max(gEnd, processed[i].end); } else { groups.push(cur); cur = [processed[i]]; gEnd = processed[i].end; } }
+            groups.push(cur);
+        }
+        groups.forEach(g => calculateLayoutLogic(g));
+        const eventBlocksHtml = renderEventLayout(processed, startHour, endHour, hourHeight);
+        const unscheduledHtml = `<div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar Hoy</h4><div id="unscheduled-tasks-container" class="flex flex-wrap gap-2">${unscheduledTasks.length > 0 ? unscheduledTasks.map(t => `<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description} <span class="text-gray-400">(${t.taskSize})</span></div>`).join('') : '<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div>`;
+        let upHtml = `<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días</h3><div class="space-y-4">`;
+        let cnt = 0; let cd = new Date(today);
+        while (cnt < 3) { cd.setDate(cd.getDate() + 1); if (cd.getDay() !== 0 && cd.getDay() !== 6) { cnt++; const ds = cd.toISOString().split('T')[0]; const dn = cd.toLocaleDateString('es-ES', { weekday: 'long' }); const dt = tasks.filter(t => { const mv = currentView === 'laboral' ? (!t.type || t.type === 'laboral') : t.type === currentView; return t.plannedDate === ds && !t.isDelegated && !t.isRepetitive && mv; }); upHtml += `<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length > 0 ? `<div class="mt-2 space-y-2">${dt.map(t => `<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description} <span class="text-gray-400">(${t.taskSize})</span></div>`).join('')}</div>` : '<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`; } }
+        upHtml += `</div>`;
+        const repHtml = renderRepetitiveChecklist(todayStr, false);
+        dom.plannerSection.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold text-gray-800 capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200 shadow-sm">00:00:00</div></div><div id="schedule-grid" class="relative" style="height:${(endHour-startHour+1)*hourHeight}px;">${timeSlotsHtml}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="top:0;display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${eventBlocksHtml}</div></div>${unscheduledHtml}</div><div>${repHtml}${upHtml}</div></div>`;
+        updatePlannerClock();
+    };
+
+    const renderCombinedPlanner = () => {
+        const today = new Date(); today.setHours(0,0,0,0); const todayStr = today.toISOString().split('T')[0];
+        const todayName = today.toLocaleDateString('es-ES', { weekday: 'long' });
+        const startHour = 6; const endHour = 23; const hourHeight = 40;
+        const allTodayTasks = tasks.filter(t => t.plannedDate === todayStr && !t.isDelegated && t.startTime && t.endTime && !t.isRepetitive);
+        const allTodayMeetings = meetings.filter(m => m.date === todayStr);
+        const allEvents = [...allTodayTasks.map(t => ({...t, type:'task', taskType:t.type||'laboral'})), ...allTodayMeetings.map(m => ({...m, type:'meeting'}))];
+        const processed = allEvents.map(e => ({...e, start:parseTime(e.startTime), end:parseTime(e.endTime)}));
+        let groups = [];
+        if (processed.length > 0) {
+            processed.sort((a,b) => a.start-b.start);
+            let cur = [processed[0]], gEnd = processed[0].end;
+            for (let i = 1; i < processed.length; i++) { if (processed[i].start < gEnd) { cur.push(processed[i]); gEnd = Math.max(gEnd, processed[i].end); } else { groups.push(cur); cur = [processed[i]]; gEnd = processed[i].end; } }
+            groups.push(cur);
+        }
+        groups.forEach(g => calculateLayoutLogic(g));
+        let timeSlotsHtml = '';
+        for (let i = startHour; i <= endHour; i++) {
+            const label = i > 12 ? `${i-12} PM` : (i === 12 ? '12 PM' : `${i} AM`);
+            timeSlotsHtml += `<div class="time-slot relative flex items-start" style="height:${hourHeight}px;" data-time="${i<10?'0'+i:i}:00"><div class="text-right w-12 pr-2 text-sm text-gray-400 -mt-2">${label}</div><div class="flex-grow border-t border-gray-200"></div></div>`;
+        }
+        const eventBlocksHtml = renderEventLayout(processed, startHour, endHour, hourHeight, true);
+        let upHtml = `<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días (Total)</h3><div class="space-y-4">`;
+        let cnt = 0; let cd = new Date(today);
+        while (cnt < 3) { cd.setDate(cd.getDate() + 1); if (cd.getDay() !== 0 && cd.getDay() !== 6) { cnt++; const ds = cd.toISOString().split('T')[0]; const dn = cd.toLocaleDateString('es-ES', { weekday: 'long' }); const dt = tasks.filter(t => t.plannedDate === ds && !t.isDelegated && !t.isRepetitive); upHtml += `<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length > 0 ? `<div class="mt-2 space-y-2">${dt.map(t => { const cc = t.type === 'personal' ? 'border-orange-200' : 'border-blue-200'; return `<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type === 'personal' ? 'text-orange-600' : 'text-blue-600'}">[${t.type === 'personal' ? 'P' : 'L'}]</span> ${t.description}</div>`; }).join('')}</div>` : '<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`; } }
+        upHtml += `</div>`;
+        const repHtml = renderRepetitiveChecklist(todayStr, true);
+        dom.combinedPlannerContainer.innerHTML = `<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold text-gray-800 capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200 shadow-sm">00:00:00</div></div><div id="schedule-grid-combined" class="relative" style="height:${(endHour-startHour+1)*hourHeight}px;">${timeSlotsHtml}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="top:0;display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${eventBlocksHtml}</div></div></div><div>${repHtml}${upHtml}</div></div>`;
+        updatePlannerClock();
+    };
+
+    const renderMeetingMonitor = () => {
+        const today = new Date(); today.setHours(0,0,0,0); const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+        const todayStr = today.toISOString().split('T')[0]; const tomStr = tomorrow.toISOString().split('T')[0];
+        const createList = (title, dateStr) => {
+            const ms = meetings.filter(m => { const mv = currentView === 'laboral' ? (!m.type || m.type === 'laboral') : m.type === currentView; return m.date === dateStr && mv; }).sort((a,b) => a.startTime.localeCompare(b.startTime));
+            if (!ms.length) return `<h3 class="text-lg font-bold text-gray-800 mb-2">${title}</h3><p class="text-sm text-gray-500">No hay reuniones programadas.</p>`;
+            return `<h3 class="text-lg font-bold text-gray-800 mb-2">${title}</h3><div class="space-y-3">${ms.map(m => { const timeText = m.endTime ? `${m.startTime} - ${m.endTime}` : m.startTime; return `<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed ? 'bg-green-100 border-green-300' : 'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-40 text-center"><p class="font-bold text-indigo-600 ${m.completed ? 'line-through text-gray-500' : ''}">${timeText}</p></div><div class="border-l-2 border-indigo-500 pl-4 ml-4 flex-grow"><p class="font-medium text-gray-800 ${m.completed ? 'line-through text-gray-500' : ''}">${m.title}</p></div><div class="flex items-center ml-4"><input type="checkbox" id="complete-meeting-monitor-${m.id}" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 text-blue-600 rounded" ${m.completed ? 'checked' : ''}></div></div>`; }).join('')}</div>`;
+        };
+        dom.meetingsList.innerHTML = createList('Reuniones de Hoy', todayStr) + `<div class="mt-6">${createList('Reuniones de Mañana', tomStr)}</div>`;
+    };
+
+    const getTaskHighlightClasses = (task) => {
+        if (task.progress === 100) return 'bg-green-100 border-green-300';
+        if (task.isDelegated) return 'bg-purple-100 border-purple-300';
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (task.dueDate && new Date(task.dueDate + 'T00:00:00') < today && task.progress < 100) return 'bg-red-100 border-red-300';
+        const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1); tomorrow.setHours(0,0,0,0);
+        if (task.dueDate && new Date(task.dueDate + 'T00:00:00') <= tomorrow && task.progress < 100) return 'bg-yellow-100 border-yellow-300';
+        if (!task.plannedDate) return 'bg-orange-100 border-orange-300';
+        return 'bg-gray-50 border-gray-200';
+    };
+
+    const getFilteredTasks = () => tasks.filter(t => {
+        const mv = currentView === 'laboral' ? (!t.type || t.type === 'laboral') : t.type === currentView;
+        return mv && !t.isRepetitive &&
+            (filters.importance === 'all' || t.isImportant === (filters.importance === 'true')) &&
+            (filters.urgency === 'all' || t.isUrgent === (filters.urgency === 'true')) &&
+            (filters.responsible === 'all' || t.responsible === filters.responsible) &&
+            (!filters.tag || (t.tags && t.tags.includes(filters.tag))) &&
+            (filters.dateRange.length !== 2 || (new Date(t.dueDate) >= filters.dateRange[0] && new Date(t.dueDate) <= filters.dateRange[1]));
+    });
+
+    const renderAllTasksList = () => {
+        const filtered = getFilteredTasks();
+        const pending = filtered.filter(t => t.progress < 100);
+        dom.allTasksList.innerHTML = pending.length > 0 ? pending.map(task => {
+            const done = task.subtasks?.filter(s => s.isCompleted).length || 0;
+            const sum = task.subtasks?.length > 0 ? `(${done}/${task.subtasks.length})` : '';
+            const assignHtml = !task.plannedDate && !task.isDelegated
+                ? `<div class="mt-2"><button class="assign-date-btn w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded" data-id="${task.id}">Asignar Día</button></div>`
+                : task.isDelegated ? `<p class="text-sm text-purple-700 mt-2 font-medium">Tarea Delegada</p>`
+                : `<p class="text-sm text-green-700 mt-2 font-medium">Planificada: ${formatDateDisplay(task.plannedDate)}</p>`;
+            return `<div class="task-card flex flex-col md:flex-row p-4 rounded-lg border ${getTaskHighlightClasses(task)}" data-id="${task.id}"><div class="flex-grow mb-4 md:mb-0 md:mr-4"><p class="font-bold text-lg">${task.description} <span class="font-normal text-gray-500">${sum}</span></p><p class="text-sm text-gray-600">Resp: ${task.responsible || 'N/A'}</p><p class="text-sm text-gray-500">Vence: ${formatDateDisplay(task.dueDate)} | Tamaño: ${task.taskSize || 'N/A'}</p></div><div class="w-full md:w-56 space-y-2"><div class="flex items-center gap-2"><input type="range" min="0" max="100" value="${task.progress}" class="w-full h-2 bg-gray-300 rounded-lg progress-slider" data-id="${task.id}"><span class="text-sm font-medium w-10 text-right">${task.progress}%</span></div>${assignHtml}</div></div>`;
+        }).join('') : '<p class="text-center text-gray-500">No hay tareas pendientes para mostrar.</p>';
+
+        let completed = filtered.filter(t => t.progress === 100);
+        const search = filters.completedTaskSearch.toLowerCase().trim();
+        const dr = filters.historyTaskDateRange;
+        if (search) completed = completed.filter(t => t.description.toLowerCase().includes(search));
+        if (dr.length === 2) completed = completed.filter(t => { const d = new Date(t.dueDate + 'T00:00:00'); return d >= dr[0] && d <= dr[1]; });
+        completed.sort((a,b) => new Date(b.dueDate) - new Date(a.dueDate));
+        const total = completed.length;
+        if (!filters.showAllCompletedTasks && !search && dr.length === 0) { completed = completed.slice(0, 5); dom.toggleAllCompletedTasks.textContent = `Ver Todo (${total})`; } else { dom.toggleAllCompletedTasks.textContent = "Ver Recientes"; }
+        dom.completedTasksList.innerHTML = completed.length > 0
+            ? completed.map(t => `<div class="task-card flex flex-col md:flex-row p-3 rounded-lg border bg-green-100 border-green-300" data-id="${t.id}"><div class="flex-grow"><p class="font-bold text-base line-through text-gray-600">${t.description}</p><p class="text-xs text-gray-500">Resp: ${t.responsible || 'N/A'} | Vencía: ${formatDateDisplay(t.dueDate)} | Completada</p></div></div>`).join('')
+            : `<p class="text-center text-gray-400 text-sm py-4">No hay historial.</p>`;
+    };
+
+    const renderAllMeetingsList = () => {
+        const dr = filterMeetingDatepicker.selectedDates;
+        const mv = (m) => currentView === 'laboral' ? (!m.type || m.type === 'laboral') : m.type === currentView;
+        const filtered = meetings.filter(m => { if (!mv(m)) return false; if (dr.length > 0) { const md = new Date(m.date + 'T00:00:00'); if (dr.length === 1) return md.getTime() === dr[0].getTime(); else if (dr.length === 2) return md >= dr[0] && md <= dr[1]; } return true; }).sort((a,b) => new Date(a.date) - new Date(b.date) || a.startTime.localeCompare(b.startTime));
+        const pending = filtered.filter(m => !m.completed);
+        dom.allMeetingsList.innerHTML = pending.length > 0 ? pending.map(m => `<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} at ${m.startTime || 'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"></div></div>`).join('') : '<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
+
+        let completed = meetings.filter(m => m.completed && mv(m));
+        const search = filters.completedMeetingSearch.toLowerCase().trim();
+        const hdr = filters.historyMeetingDateRange;
+        if (search) completed = completed.filter(m => m.title.toLowerCase().includes(search));
+        if (hdr.length === 2) completed = completed.filter(m => { const d = new Date(m.date + 'T00:00:00'); return d >= hdr[0] && d <= hdr[1]; });
+        completed.sort((a,b) => new Date(b.date) - new Date(a.date));
+        const total = completed.length;
+        if (!filters.showAllCompletedMeetings && !search && hdr.length === 0) { completed = completed.slice(0, 5); dom.toggleAllCompletedMeetings.textContent = `Ver Todo (${total})`; } else { dom.toggleAllCompletedMeetings.textContent = "Ver Recientes"; }
+        dom.completedMeetingsList.innerHTML = completed.length > 0
+            ? completed.map(m => `<div class="meeting-card-full flex items-center p-3 rounded-lg border bg-green-50 border-green-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-base line-through text-gray-600">${m.title}</p><p class="text-xs text-gray-500">${formatDateDisplay(m.date)} | Realizada</p></div></div>`).join('')
+            : `<p class="text-center text-gray-400 text-sm py-4">Sin historial.</p>`;
+    };
+
+    const populateModalSelects = () => {
+        const resp = allResponsibles[currentView] || [];
+        dom.responsibleSelect.innerHTML = '<option value="">-- Sin Asignar --</option>' + resp.map(r => `<option value="${r}">${r}</option>`).join('');
+        const tags = allTags[currentView] || [];
+        dom.tagsSelect.innerHTML = tags.map(t => `<option value="${t}">${t}</option>`).join('');
+    };
+
+    const renderFilters = () => {
+        dom.filterImportance.innerHTML = Object.entries({ all: 'Todas', true: 'Importante', false: 'No Importante' }).map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+        dom.filterUrgency.innerHTML = Object.entries({ all: 'Todas', true: 'Urgente', false: 'No Urgente' }).map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+        dom.taskForm.importance.innerHTML = `<option value="true">Importante</option><option value="false">No Importante</option>`;
+        dom.taskForm.urgency.innerHTML = `<option value="true">Urgente</option><option value="false">No Urgente</option>`;
+        const resp = allResponsibles[currentView] || [];
+        dom.responsibleFilterContainer.innerHTML = `<label class="block text-xs font-medium text-gray-700">Responsable</label><select id="filter-responsible" class="mt-1 block w-full p-2 border border-gray-300 rounded-md text-xs"><option value="all">Todos</option>${resp.map(r => `<option value="${r}">${r}</option>`).join('')}</select>`;
+        const tags = allTags[currentView] || [];
+        dom.filterTagsContainer.innerHTML = `<span class="tag-filter ${!filters.tag ? 'selected bg-blue-500 text-white' : 'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="all">Todas</span>` + tags.map(t => `<span class="tag-filter ${filters.tag === t ? 'selected bg-blue-500 text-white' : 'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="${t}">${t}</span>`).join('');
+    };
+
+    const renderSubtasksInModal = () => {
+        dom.subtasksList.innerHTML = currentSubtasks.map(st => `<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted ? 'checked' : ''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted ? 'line-through text-gray-500' : ''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible || 'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join('');
+    };
+
+    const saveTask = e => {
+        e.preventDefault();
+        const id = dom.taskForm.taskId.value;
+        const selectedTags = Array.from(dom.tagsSelect.selectedOptions).map(o => o.value);
+        const isRep = dom.isRepetitiveCheckbox.checked;
+        const taskData = { type: dom.taskForm.taskType.value, description: dom.taskForm.description.value, taskSize: dom.taskForm.taskSize.value, responsible: dom.responsibleSelect.value || null, isImportant: dom.taskForm.importance.value === 'true', isUrgent: dom.taskForm.urgency.value === 'true', dueDate: isRep ? null : dom.taskForm.dueDate.value, tags: selectedTags, isDelegated: isRep ? false : dom.taskForm.isDelegated.checked, isRepetitive: isRep, plannedDate: (isRep || dom.taskForm.isDelegated.checked) ? null : dom.taskForm.plannedDate.value || null, startTime: dom.taskForm.startTime.value || null, endTime: dom.taskForm.endTime.value || null, subtasks: [...currentSubtasks] };
+        if (id) taskData.progress = parseInt(dom.taskForm.progress.value, 10);
+        const existing = id ? tasks.find(t => t.id === id) : {};
+        const final = { ...existing, ...taskData };
+        if (!id) { final.id = Date.now().toString(); final.progress = 0; final.completedDates = []; }
+        if (id) { tasks[tasks.findIndex(t => t.id === id)] = final; } else { tasks.push(final); }
+        saveData(); loadData().then(() => { renderAll(); closeTaskModal(); });
+    };
+
+    const openTaskModal = () => { dom.taskModal.classList.remove('hidden'); setTimeout(() => { dom.taskModal.classList.remove('opacity-0'); dom.modalContent.classList.remove('scale-95'); }, 10); };
+    const closeTaskModal = () => { dom.taskModal.classList.add('opacity-0'); dom.modalContent.classList.add('scale-95'); setTimeout(() => { dom.taskModal.classList.add('hidden'); dom.taskForm.reset(); currentSubtasks = []; dom.deleteTaskBtn.classList.add('hidden'); dom.taskForm.taskId.value = ''; dueDatepicker.clear(); plannedDatepicker.clear(); startTimepicker.clear(); endTimepicker.clear(); dom.timeContainerModal.classList.add('hidden'); dom.progressContainerModal.classList.remove('hidden'); dom.dateControlsContainer.classList.remove('hidden'); dom.delegatedContainer.classList.remove('hidden'); }, 300); };
+
+    const openEditTaskModal = (task, initialTime = null) => {
+        dom.taskForm.reset(); populateModalSelects();
+        const isRep = !!task.isRepetitive;
+        dom.isRepetitiveCheckbox.checked = isRep;
+        if (task && task.id) {
+            dom.modalTitle.innerText = 'Editar Tarea';
+            dom.taskForm.taskId.value = task.id;
+            dom.taskForm.taskType.value = task.type || 'laboral';
+            dom.taskForm.description.value = task.description;
+            dom.taskForm.taskSize.value = task.taskSize || 'Mediana';
+            dom.taskForm.importance.value = task.isImportant;
+            dom.taskForm.urgency.value = task.isUrgent;
+            dom.taskForm.isDelegated.checked = task.isDelegated;
+            dom.taskForm.progress.value = task.progress || 0;
+            dom.progressLabel.textContent = `${task.progress || 0}%`;
+            if (task.dueDate) dueDatepicker.setDate(task.dueDate);
+            if (task.plannedDate) { plannedDatepicker.setDate(task.plannedDate); dom.timeContainerModal.classList.remove('hidden'); if (task.startTime) startTimepicker.setDate(task.startTime); if (task.endTime) endTimepicker.setDate(task.endTime); } else { dom.timeContainerModal.classList.add('hidden'); }
+            dom.responsibleSelect.value = task.responsible || '';
+            Array.from(dom.tagsSelect.options).forEach(o => { o.selected = task.tags && task.tags.includes(o.value); });
+            currentSubtasks = JSON.parse(JSON.stringify(task.subtasks || []));
+            dom.deleteTaskBtn.classList.remove('hidden');
+        } else {
+            dom.modalTitle.innerText = 'Nueva Tarea';
+            dom.taskForm.taskId.value = '';
+            dom.taskForm.taskType.value = currentView;
+            currentSubtasks = [];
+            dom.taskForm.importance.value = 'true';
+            dom.taskForm.urgency.value = 'false';
+            dom.deleteTaskBtn.classList.add('hidden');
+            if (initialTime) {
+                const todayStr = new Date().toISOString().split('T')[0];
+                dueDatepicker.setDate(todayStr); plannedDatepicker.setDate(todayStr);
+                startTimepicker.setDate(initialTime);
+                const [h, m] = initialTime.split(':').map(Number);
+                const eh = h + 1;
+                endTimepicker.setDate(`${eh < 10 ? '0'+eh : eh}:${m < 10 ? '0'+m : m}`);
+                dom.timeContainerModal.classList.remove('hidden');
+            }
+        }
+        dom.dateControlsContainer.classList.toggle('hidden', isRep);
+        dom.delegatedContainer.classList.toggle('hidden', isRep);
+        dom.progressContainerModal.classList.toggle('hidden', isRep);
+        dom.plannedDateContainer.style.display = (dom.taskForm.isDelegated.checked || isRep) ? 'none' : 'block';
+        renderSubtasksInModal(); openTaskModal();
+    };
+
+    const saveMeeting = e => { e.preventDefault(); const id = dom.meetingForm.meetingId.value; const st = dom.meetingForm.meetingStartTime.value; const et = dom.meetingForm.meetingEndTime.value; if (st && et && parseTime(et) <= parseTime(st)) { alert('La hora de fin debe ser posterior a la hora de inicio.'); return; } const data = { type: dom.meetingForm.meetingType.value, title: dom.meetingForm.meetingTitle.value, date: dom.meetingForm.meetingDate.value, startTime: st, endTime: et }; if (id) meetings[meetings.findIndex(m => m.id === id)] = { ...meetings.find(m => m.id === id), ...data }; else meetings.push({ id: Date.now().toString(), completed: false, ...data }); saveData(); renderAll(); closeMeetingModal(); };
+    const openMeetingModal = () => { dom.meetingModal.classList.remove('hidden'); setTimeout(() => { dom.meetingModal.classList.remove('opacity-0'); dom.meetingModal.querySelector('.modal-content').classList.remove('scale-95'); }, 10); };
+    const closeMeetingModal = () => { dom.meetingModal.classList.add('opacity-0'); dom.meetingModal.querySelector('.modal-content').classList.add('scale-95'); setTimeout(() => { dom.meetingModal.classList.add('hidden'); dom.meetingForm.reset(); dom.meetingForm.meetingId.value = ''; dom.deleteMeetingBtn.classList.add('hidden'); meetingDatepicker.clear(); meetingStartTimePicker.clear(); meetingEndTimePicker.clear(); }, 300); };
+    const openEditMeetingModal = m => { dom.meetingForm.reset(); if (m && m.id) { dom.meetingModalTitle.innerText = 'Editar Reunión'; dom.meetingForm.meetingId.value = m.id; dom.meetingForm.meetingType.value = m.type || 'laboral'; dom.meetingForm.meetingTitle.value = m.title; meetingDatepicker.setDate(m.date); if (m.startTime) { meetingStartTimePicker.setDate(m.startTime); meetingEndTimePicker.setDate(m.endTime); } dom.deleteMeetingBtn.classList.remove('hidden'); } else { dom.meetingModalTitle.innerText = 'Nueva Reunión'; dom.meetingForm.meetingId.value = ''; dom.meetingForm.meetingType.value = currentView; dom.deleteMeetingBtn.classList.add('hidden'); } openMeetingModal(); };
+    const openScheduleModal = taskId => { const task = tasks.find(t => t.id === taskId); if (!task) return; dom.scheduleForm.scheduleTaskId.value = taskId; dom.scheduleTaskDescription.textContent = task.description; scheduleStartTimePicker.clear(); scheduleEndTimePicker.clear(); dom.scheduleModal.classList.remove('hidden'); setTimeout(() => { dom.scheduleModal.classList.remove('opacity-0'); dom.scheduleModal.querySelector('.modal-content').classList.remove('scale-95'); }, 10); };
+    const closeScheduleModal = () => { dom.scheduleModal.classList.add('opacity-0'); dom.scheduleModal.querySelector('.modal-content').classList.add('scale-95'); setTimeout(() => { dom.scheduleModal.classList.add('hidden'); dom.scheduleForm.reset(); }, 300); };
+    const saveScheduleTime = e => { e.preventDefault(); const taskId = dom.scheduleForm.scheduleTaskId.value; const task = tasks.find(t => t.id === taskId); const st = dom.scheduleForm.scheduleStartTime.value; const et = dom.scheduleForm.scheduleEndTime.value; if (task && st && et && parseTime(et) > parseTime(st)) { task.startTime = st; task.endTime = et; saveData(); renderAll(); closeScheduleModal(); } else { alert('La hora de fin debe ser posterior a la hora de inicio.'); } };
+
+    const exportTasksToPDF = () => {
+        const { jsPDF } = window.jspdf; const doc = new jsPDF(); const filtered = getFilteredTasks();
+        if (!filtered.length) { alert('No hay tareas para exportar.'); return; }
+        doc.text("Reporte de Tareas Pendientes", 14, 16);
+        doc.autoTable({ startY: 22, head: [['Descripción','Responsable','Vence','Progreso (%)']], body: filtered.map(t => [t.description, t.responsible || 'N/A', formatDateDisplay(t.dueDate), t.progress]), theme: 'striped', headStyles: { fillColor: [41,128,185] } });
+        doc.save(`reporte-tareas-${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    const playNotificationSound = () => {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const beep = (t, f = 880) => { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(f, ctx.currentTime); o.connect(ctx.destination); o.start(t); o.stop(t + 0.1); };
+        const now = ctx.currentTime; beep(now); beep(now + 0.2); beep(now + 0.4, 1000);
+    };
+    const showNotification = msg => { dom.notificationMessage.textContent = msg; dom.notificationToast.classList.remove('opacity-0','translate-y-10'); playNotificationSound(); setTimeout(() => { dom.notificationToast.classList.add('opacity-0','translate-y-10'); }, 5000); };
+    const checkAllAlerts = () => {
+        const now = new Date(); const todayStr = now.toISOString().split('T')[0];
+        const checkItem = (item, type) => { const st = item.startTime; if (!st) return; const [h, m] = st.split(':').map(Number); const t = new Date(); t.setHours(h, m, 0, 0); const diff = Math.round((t - now) / 60000); const title = type === 'meeting' ? item.title : item.description; if (diff === 15 && !firedAlerts.has(`${type}-${item.id}-15`)) { showNotification(`AVISO (15 min): ${title}`); firedAlerts.add(`${type}-${item.id}-15`); } if (diff === 0 && !firedAlerts.has(`${type}-${item.id}-0`)) { showNotification(`¡AHORA!: ${title}`); firedAlerts.add(`${type}-${item.id}-0`); } };
+        meetings.filter(m => m.date === todayStr && !m.completed).forEach(m => checkItem(m, 'meeting'));
+        tasks.filter(t => t.plannedDate === todayStr && t.progress < 100 && !t.isRepetitive).forEach(t => checkItem(t, 'task'));
+    };
+
+    const updateTimerDisplay = () => { dom.timerDisplay.textContent = `${Math.floor(timeRemaining/60).toString().padStart(2,'0')}:${(timeRemaining%60).toString().padStart(2,'0')}`; };
+    const switchTimerMode = mode => { timerMode = mode; resetTimer(); document.querySelectorAll('.timer-btn').forEach(b => b.classList.remove('active')); dom[mode + 'ModeBtn'].classList.add('active'); };
+    const startPauseTimer = () => { isTimerRunning = !isTimerRunning; dom.startPauseTimerBtn.textContent = isTimerRunning ? 'PAUSAR' : 'INICIAR'; if (isTimerRunning) { timerEndTime = Date.now() + timeRemaining * 1000; timerIntervalId = setInterval(() => { timeRemaining = Math.max(0, Math.round((timerEndTime - Date.now()) / 1000)); updateTimerDisplay(); if (timeRemaining <= 0) { clearInterval(timerIntervalId); isTimerRunning = false; dom.startPauseTimerBtn.textContent = 'INICIAR'; playNotificationSound(); showNotification('¡Tiempo terminado!'); } }, 1000); } else { clearInterval(timerIntervalId); } };
+    const resetTimer = () => { clearInterval(timerIntervalId); isTimerRunning = false; timeRemaining = TIMER_MODES[timerMode]; dom.startPauseTimerBtn.textContent = 'INICIAR'; updateTimerDisplay(); };
+
+    // --- Event Listeners ---
+    const evts = [
+        { el: dom.showDashboardBtn, ev: 'click', fn: () => switchView('dashboard') },
+        { el: dom.showAllTasksBtn, ev: 'click', fn: () => switchView('tasks') },
+        { el: dom.showAllMeetingsBtn, ev: 'click', fn: () => switchView('meetings') },
+        { el: dom.showCombinedPlannerBtn, ev: 'click', fn: () => { switchView('combined'); renderCombinedPlanner(); } },
+        { el: dom.viewLaboralBtn, ev: 'click', fn: () => setMainView('laboral') },
+        { el: dom.viewPersonalBtn, ev: 'click', fn: () => setMainView('personal') },
+        { el: dom.openModalBtn, ev: 'click', fn: () => openEditTaskModal({}) },
+        { el: dom.openModalBtnAllTasks, ev: 'click', fn: () => openEditTaskModal({}) },
+        { el: dom.closeModalBtn, ev: 'click', fn: closeTaskModal },
+        { el: dom.taskForm, ev: 'submit', fn: saveTask },
+        { el: dom.deleteTaskBtn, ev: 'click', fn: () => { tasks = tasks.filter(t => t.id !== dom.taskForm.taskId.value); saveData(); renderAll(); closeTaskModal(); } },
+        { el: dom.searchCompletedTasks, ev: 'input', fn: e => { filters.completedTaskSearch = e.target.value; renderAllTasksList(); } },
+        { el: dom.toggleAllCompletedTasks, ev: 'click', fn: () => { filters.showAllCompletedTasks = !filters.showAllCompletedTasks; renderAllTasksList(); } },
+        { el: dom.addMeetingBtn, ev: 'click', fn: () => openEditMeetingModal({}) },
+        { el: dom.closeMeetingModalBtn, ev: 'click', fn: closeMeetingModal },
+        { el: dom.meetingForm, ev: 'submit', fn: saveMeeting },
+        { el: dom.deleteMeetingBtn, ev: 'click', fn: () => { meetings = meetings.filter(m => m.id !== dom.meetingForm.meetingId.value); saveData(); renderAll(); closeMeetingModal(); } },
+        { el: dom.meetingsList, ev: 'change', fn: e => { if (e.target.classList.contains('complete-meeting-cb-monitor')) { const m = meetings.find(m => m.id === e.target.dataset.id); if (m) { m.completed = e.target.checked; saveData(); renderMeetingMonitor(); renderAllMeetingsList(); renderCombinedPlanner(); } } } },
+        { el: dom.allMeetingsList, ev: 'change', fn: e => { if (e.target.classList.contains('complete-meeting-cb')) { const m = meetings.find(m => m.id === e.target.dataset.id); if (m) { m.completed = e.target.checked; saveData(); renderAllMeetingsList(); renderCombinedPlanner(); } } } },
+        { el: dom.searchCompletedMeetings, ev: 'input', fn: e => { filters.completedMeetingSearch = e.target.value; renderAllMeetingsList(); } },
+        { el: dom.toggleAllCompletedMeetings, ev: 'click', fn: () => { filters.showAllCompletedMeetings = !filters.showAllCompletedMeetings; renderAllMeetingsList(); } },
+        { el: dom.plannerSection, ev: 'click', fn: e => {
+            const ts = e.target.closest('.time-slot'); if (ts) openEditTaskModal({}, ts.dataset.time);
+            const ut = e.target.closest('.unscheduled-task'); if (ut) openScheduleModal(ut.dataset.id);
+            const cb = e.target.closest('.repetitive-cb'); if (cb) { const t = tasks.find(t => t.id === cb.dataset.id); if (t) { if (!t.completedDates) t.completedDates = []; const idx = t.completedDates.indexOf(cb.dataset.date); if (cb.checked) { if (idx === -1) t.completedDates.push(cb.dataset.date); } else { if (idx !== -1) t.completedDates.splice(idx, 1); } saveData(); renderAll(); } }
+            const er = e.target.closest('.edit-repetitive-btn'); if (er) { const t = tasks.find(t => t.id === er.dataset.id); if (t) openEditTaskModal(t); }
+        }},
+        { el: dom.combinedPlannerContainer, ev: 'click', fn: e => {
+            const ts = e.target.closest('.time-slot'); if (ts) openEditTaskModal({}, ts.dataset.time);
+            const card = e.target.closest('.task-card'); if (card && !e.target.closest('.progress-slider')) { const t = tasks.find(t => t.id === card.dataset.id); if (t) openEditTaskModal(t); }
+            const mc = e.target.closest('.meeting-card'); if (mc) { const m = meetings.find(m => m.id === mc.dataset.id); if (m) openEditMeetingModal(m); }
+            const cb = e.target.closest('.repetitive-cb'); if (cb) { const t = tasks.find(t => t.id === cb.dataset.id); if (t) { if (!t.completedDates) t.completedDates = []; const idx = t.completedDates.indexOf(cb.dataset.date); if (cb.checked) { if (idx === -1) t.completedDates.push(cb.dataset.date); } else { if (idx !== -1) t.completedDates.splice(idx, 1); } saveData(); renderAll(); } }
+            const er = e.target.closest('.edit-repetitive-btn'); if (er) { const t = tasks.find(t => t.id === er.dataset.id); if (t) openEditTaskModal(t); }
+        }},
+        { el: dom.scheduleForm, ev: 'submit', fn: saveScheduleTime },
+        { el: dom.closeScheduleModalBtn, ev: 'click', fn: closeScheduleModal },
+        { el: dom.pomodoroModeBtn, ev: 'click', fn: () => switchTimerMode('pomodoro') },
+        { el: dom.shortBreakModeBtn, ev: 'click', fn: () => switchTimerMode('shortBreak') },
+        { el: dom.longBreakModeBtn, ev: 'click', fn: () => switchTimerMode('longBreak') },
+        { el: dom.startPauseTimerBtn, ev: 'click', fn: startPauseTimer },
+        { el: dom.resetTimerBtn, ev: 'click', fn: resetTimer },
+        { el: dom.taskForm.progress, ev: 'input', fn: e => { dom.progressLabel.textContent = `${e.target.value}%`; } },
+        { el: dom.addResponsibleBtn, ev: 'click', fn: () => { const v = dom.newResponsibleInput.value.trim(); if (v) { const vt = dom.taskForm.taskType.value; if (!allResponsibles[vt].includes(v)) { allResponsibles[vt].push(v); allResponsibles[vt].sort(); saveData(); populateModalSelects(); renderFilters(); } dom.responsibleSelect.value = v; dom.newResponsibleInput.value = ''; } } },
+        { el: dom.addTagBtn, ev: 'click', fn: () => { const v = dom.newTagInput.value.trim(); if (v) { const vt = dom.taskForm.taskType.value; if (!allTags[vt].includes(v)) { allTags[vt].push(v); allTags[vt].sort(); saveData(); populateModalSelects(); renderFilters(); } Array.from(dom.tagsSelect.options).forEach(o => { if (o.value === v) o.selected = true; }); dom.newTagInput.value = ''; } } },
+        { el: dom.isDelegatedCheckbox, ev: 'change', fn: e => { dom.plannedDateContainer.style.display = e.target.checked ? 'none' : 'block'; if (e.target.checked) plannedDatepicker.clear(); } },
+        { el: dom.isRepetitiveCheckbox, ev: 'change', fn: e => { const r = e.target.checked; dom.dateControlsContainer.classList.toggle('hidden', r); dom.delegatedContainer.classList.toggle('hidden', r); dom.progressContainerModal.classList.toggle('hidden', r); dom.plannedDateContainer.style.display = r ? 'none' : (dom.isDelegatedCheckbox.checked ? 'none' : 'block'); if (r) { plannedDatepicker.clear(); dueDatepicker.clear(); dom.isDelegatedCheckbox.checked = false; } } },
+        { el: dom.addSubtaskBtn, ev: 'click', fn: () => { const t = dom.newSubtaskText.value.trim(); if (!t) return; currentSubtasks.push({ id: Date.now().toString(), text: t, responsible: dom.newSubtaskResponsible.value.trim(), isCompleted: false }); dom.newSubtaskText.value = ''; dom.newSubtaskResponsible.value = ''; renderSubtasksInModal(); } },
+        { el: dom.subtasksList, ev: 'click', fn: e => { const id = e.target.dataset.id; if (e.target.classList.contains('subtask-checkbox')) { currentSubtasks.find(s => s.id === id).isCompleted = e.target.checked; renderSubtasksInModal(); } if (e.target.classList.contains('delete-subtask-btn')) { currentSubtasks = currentSubtasks.filter(s => s.id !== id); renderSubtasksInModal(); } } },
+        { el: dom.exportBtn, ev: 'click', fn: () => { const blob = new Blob([JSON.stringify({tasks, meetings, allTags, allResponsibles}, null, 2)], {type: 'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'tasks_and_meetings.json'; a.click(); URL.revokeObjectURL(url); } },
+        { el: dom.importFile, ev: 'change', fn: e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (ev) => { try { const data = JSON.parse(ev.target.result); if (data && typeof data === 'object') { tasks = data.tasks || []; meetings = data.meetings || []; allTags = data.allTags || { laboral: [], personal: [] }; allResponsibles = data.allResponsibles || { laboral: [], personal: [] }; saveData(); await loadData(); renderAll(); alert('¡Datos importados correctamente!'); } } catch { alert('Error al leer el archivo.'); } }; reader.readAsText(file); e.target.value = ''; } },
+        { el: dom.filterTagsContainer, ev: 'click', fn: e => { if (e.target.classList.contains('tag-filter')) { filters.tag = e.target.dataset.tag === 'all' ? null : e.target.dataset.tag; renderAll(); } } },
+        { el: document, ev: 'click', fn: e => { const card = e.target.closest('.task-card'); if (card && !e.target.closest('.progress-slider, .assign-date-btn, .unscheduled-task, .subtask-tooltip, .repetitive-cb, .time-slot, .absolute')) { const t = tasks.find(t => t.id === card.dataset.id); if (t) openEditTaskModal(t); } } },
+        { el: document, ev: 'input', fn: e => { if (e.target.classList.contains('progress-slider')) { const t = tasks.find(t => t.id === e.target.dataset.id); if (t) { t.progress = parseInt(e.target.value, 10); saveData(); renderAll(); } } } },
+        { el: dom.allTasksList, ev: 'click', fn: e => { if (e.target.classList.contains('assign-date-btn')) { rescheduleDatePicker.config.onChange = [(d, ds) => { const t = tasks.find(t => t.id === e.target.dataset.id); if (t) { t.plannedDate = ds; saveData(); renderAll(); } }]; rescheduleDatePicker.open(); } } },
+        { el: dom.responsibleFilterContainer, ev: 'change', fn: e => { if (e.target.id === 'filter-responsible') { filters.responsible = e.target.value; renderAllTasksList(); } } },
+        { el: dom.filterImportance, ev: 'change', fn: e => { filters.importance = e.target.value; renderAllTasksList(); } },
+        { el: dom.filterUrgency, ev: 'change', fn: e => { filters.urgency = e.target.value; renderAllTasksList(); } },
+        { el: dom.exportPdfBtn, ev: 'click', fn: exportTasksToPDF },
+    ];
+    evts.forEach(item => item.el.addEventListener(item.ev, item.fn));
+    filterDatepicker.config.onChange.push(() => { renderAllTasksList(); });
+    filterMeetingDatepicker.config.onChange.push(() => { renderAllMeetingsList(); });
+
+    // Inicializar: cargar desde localStorage primero (respuesta inmediata), luego Firebase actualizará
+    setFirebaseStatus('connecting', '⟳ Cargando...');
+    loadData().then(() => {
+        renderAll();
+        switchView('combined');
+        // Si Firebase no está configurado, mostramos estado local
+        if (!window._firebase || !window._firebase.enabled) {
+            setFirebaseStatus('local', '💾 Modo local (sin nube)');
+            document.getElementById('firebase-setup-banner').classList.remove('hidden');
+        }
+    });
+    setInterval(checkAllAlerts, 60000);
+    setInterval(updatePlannerClock, 1000);
+});
+</script>
+</body>
+</html>
