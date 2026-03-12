@@ -962,7 +962,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dom.subtasksList.innerHTML = currentSubtasks.map(st => `<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted ? 'checked' : ''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted ? 'line-through text-gray-500' : ''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible || 'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join('');
     };
 
-    const saveTask = e => {
+            const saveTask = e => {
         e.preventDefault();
         const id = dom.taskForm.taskId.value;
         const selectedTags = Array.from(dom.tagsSelect.selectedOptions).map(o => o.value);
@@ -973,7 +973,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const final = { ...existing, ...taskData };
         if (!id) { final.id = Date.now().toString(); final.progress = 0; final.completedDates = []; }
         if (id) { tasks[tasks.findIndex(t => t.id === id)] = final; } else { tasks.push(final); }
-        saveData(); loadData().then(() => { renderAll(); closeTaskModal(); });
+        saveData();
+        renderAll();
+        closeTaskModal();
     };
 
     const openTaskModal = () => { dom.taskModal.classList.remove('hidden'); setTimeout(() => { dom.taskModal.classList.remove('opacity-0'); dom.modalContent.classList.remove('scale-95'); }, 10); };
