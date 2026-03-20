@@ -11,28 +11,57 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
-        .quadrant { min-height: 250px; transition: background-color 0.3s ease; }
-        .task-card, .meeting-card, .meeting-card-full { cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-        .task-card:hover, .meeting-card:hover, .meeting-card-full:hover { transform: translateY(-4px); box-shadow: 0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05); }
-        .time-slot { cursor: cell; transition: background-color 0.1s; }
-        .time-slot:hover { background-color: rgba(59,130,246,.05); }
-        .modal { transition: opacity 0.3s ease; }
-        .modal-content { transition: transform 0.3s ease; }
-        .tag,.tag-filter,.responsible-tag { cursor: pointer; }
-        .tag.selected,.tag-filter.selected,.responsible-tag.selected { transform: scale(1.05); box-shadow: 0 0 0 2px #3b82f6; }
-        .subtask-item:hover .delete-subtask-btn { opacity: 1; }
-        .timer-btn.active,.view-btn.active { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1); }
-        #notification-toast { transition: transform 0.5s ease-in-out, opacity 0.5s ease-in-out; }
-        #planner-clock { font-family: 'Courier New', Courier, monospace; }
-        #time-now-line { pointer-events: none; z-index: 30; transition: top 0.5s ease-in-out; }
-        .subtask-tooltip { pointer-events: none; z-index: 50; }
-        .repetitive-item { transition: background-color 0.2s; }
-        .repetitive-item:hover { background-color: #f9fafb; }
-        #fb-status.connecting { background-color: #fef3c7; color: #92400e; border-color: #fcd34d; }
-        #fb-status.connected  { background-color: #d1fae5; color: #065f46; border-color: #6ee7b7; }
-        #fb-status.offline    { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
-        #fb-status.local      { background-color: #e0e7ff; color: #3730a3; border-color: #a5b4fc; }
+        body { font-family:'Inter',sans-serif; background-color:#f3f4f6; }
+        .quadrant { min-height:250px; }
+        .task-card,.meeting-card,.meeting-card-full { cursor:pointer; transition:transform .2s,box-shadow .2s; }
+        .task-card:hover,.meeting-card:hover,.meeting-card-full:hover { transform:translateY(-4px); box-shadow:0 10px 15px -3px rgba(0,0,0,.1); }
+        .time-slot { cursor:cell; transition:background-color .1s; }
+        .time-slot:hover { background-color:rgba(59,130,246,.05); }
+        .modal { transition:opacity .3s; }
+        .modal-content { transition:transform .3s; }
+        .tag-filter.selected { transform:scale(1.05); box-shadow:0 0 0 2px #3b82f6; }
+        .subtask-item:hover .delete-subtask-btn { opacity:1; }
+        .timer-btn.active,.view-btn.active { background-color:#3b82f6; color:white; }
+        #notification-toast { transition:transform .5s,opacity .5s; }
+        #time-now-line { pointer-events:none; z-index:30; transition:top .5s; }
+        .repetitive-item:hover { background-color:#f9fafb; }
+        #fb-status.connecting { background-color:#fef3c7;color:#92400e;border-color:#fcd34d; }
+        #fb-status.connected  { background-color:#d1fae5;color:#065f46;border-color:#6ee7b7; }
+        #fb-status.offline    { background-color:#fee2e2;color:#991b1b;border-color:#fca5a5; }
+        #fb-status.local      { background-color:#e0e7ff;color:#3730a3;border-color:#a5b4fc; }
+
+        /* ── Historial ─────────────────────────────────── */
+        #hist-cal-wrap { width:100%; }
+        #hist-cal-header, #hist-cal-days {
+            display:grid !important;
+            grid-template-columns:repeat(7, 1fr) !important;
+            gap:2px !important;
+        }
+        .hist-cal-day {
+            all: unset;
+            display:flex !important; align-items:center !important; justify-content:center !important;
+            width:100% !important; height:28px !important;
+            border-radius:5px !important; font-size:11px !important; cursor:pointer !important;
+            position:relative !important; transition:background .15s !important;
+            user-select:none !important; box-sizing:border-box !important;
+        }
+        .hist-cal-day:hover:not(.empty) { background:#e0e7ff !important; }
+        .hist-cal-day.has-snap { background:#dbeafe !important; color:#1d4ed8 !important; font-weight:700 !important; }
+        .hist-cal-day.has-snap:hover { background:#bfdbfe !important; }
+        .hist-cal-day.selected { background:#3b82f6 !important; color:white !important; border-radius:50% !important; }
+        .hist-cal-day.today-mark { box-shadow:inset 0 0 0 2px #f97316 !important; border-radius:50% !important; }
+        .hist-cal-day.empty { cursor:default !important; opacity:0 !important; pointer-events:none !important; }
+        .snap-dot { position:absolute !important; bottom:2px !important; left:50% !important; transform:translateX(-50%) !important; width:3px !important; height:3px !important; border-radius:50% !important; background:#3b82f6 !important; }
+        .hist-cal-day.selected .snap-dot { background:white !important; }
+        .hist-timeline-block { position:absolute; border-radius:4px; overflow:hidden; font-size:10px; line-height:1.2; padding:2px 5px; }
+        .pct-bar-wrap { background:#e5e7eb; border-radius:99px; height:7px; }
+        .pct-bar { border-radius:99px; height:7px; transition:width .5s; }
+        .stat-card { text-align:center; padding:.75rem; border-radius:.75rem; }
+        .stat-card .val { font-size:1.6rem; font-weight:800; line-height:1; }
+        .stat-card .lbl { font-size:.6rem; color:#6b7280; text-transform:uppercase; letter-spacing:.06em; margin-top:.2rem; }
+        .hist-day-row { transition:all .15s; }
+        .hist-day-row:hover { background:#f0f4ff; }
+        .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
     </style>
 </head>
 <body class="text-gray-800">
@@ -50,30 +79,82 @@
     </header>
 
     <nav class="flex justify-center border-b-2 border-gray-200 mb-8 overflow-x-auto whitespace-nowrap">
-        <button id="show-combined-planner-btn" class="py-4 px-6 block text-blue-600 border-b-2 font-medium border-blue-600">Cronograma Combinado</button>
-        <button id="show-dashboard-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Panel Principal</button>
-        <button id="show-all-tasks-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Tareas</button>
-        <button id="show-all-meetings-btn" class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Reuniones</button>
+        <button id="show-combined-planner-btn" class="py-4 px-6 block text-blue-600 border-b-2 border-blue-600 font-medium">Cronograma Combinado</button>
+        <button id="show-history-btn"          class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600 flex items-center gap-1.5">📅 Historial <span id="hist-badge" class="hidden bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full"></span></button>
+        <button id="show-dashboard-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Panel Principal</button>
+        <button id="show-all-tasks-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Tareas</button>
+        <button id="show-all-meetings-btn"     class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Reuniones</button>
     </nav>
 
+    <!-- ══ CRONOGRAMA COMBINADO ══ -->
     <div id="combined-planner-view">
         <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
             <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b pb-4">
                 <h2 class="text-2xl font-bold text-gray-800">Cronograma Combinado</h2>
                 <div class="flex gap-4 text-xs">
-                    <div class="flex items-center"><span class="w-3 h-3 bg-blue-100 border border-blue-300 rounded mr-1.5"></span> Laboral</div>
-                    <div class="flex items-center"><span class="w-3 h-3 bg-orange-100 border border-orange-300 rounded mr-1.5"></span> Personal</div>
-                    <div class="flex items-center"><span class="w-3 h-3 bg-cyan-100 border border-cyan-300 rounded mr-1.5"></span> Reuniones</div>
+                    <div class="flex items-center"><span class="w-3 h-3 bg-blue-100 border border-blue-300 rounded mr-1.5"></span>Laboral</div>
+                    <div class="flex items-center"><span class="w-3 h-3 bg-orange-100 border border-orange-300 rounded mr-1.5"></span>Personal</div>
+                    <div class="flex items-center"><span class="w-3 h-3 bg-cyan-100 border border-cyan-300 rounded mr-1.5"></span>Reuniones</div>
                 </div>
             </div>
             <div id="combined-planner-container"></div>
         </div>
     </div>
 
+    <!-- ══ HISTORIAL (vista independiente) ══ -->
+    <div id="history-view" class="hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Columna izquierda: calendario + lista de días -->
+            <div class="lg:col-span-4 space-y-4">
+
+                <!-- Mini-calendario -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-3" id="hist-cal-wrap">
+                    <div class="flex items-center justify-between mb-2">
+                        <button id="hist-prev-month" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 font-bold text-sm transition">‹</button>
+                        <span id="hist-month-label" class="font-bold text-gray-700 text-xs"></span>
+                        <button id="hist-next-month" class="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 font-bold text-sm transition">›</button>
+                    </div>
+                    <div id="hist-cal-header"></div>
+                    <div id="hist-cal-days"></div>
+                    <div class="flex gap-2 mt-2 text-[9px] text-gray-400 justify-center flex-wrap">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-100 border border-blue-300 rounded-sm inline-block"></span>Con registro</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-500 rounded-full inline-block"></span>Seleccionado</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full border-2 border-orange-400 inline-block"></span>Hoy</span>
+                    </div>
+                </div>
+
+                <!-- Lista de días registrados -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
+                        <h3 class="font-bold text-gray-700 text-sm">Registros guardados</h3>
+                        <span id="hist-count-label" class="text-xs text-gray-400"></span>
+                    </div>
+                    <div id="hist-days-list" class="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                        <p id="hist-list-empty" class="text-center text-gray-400 text-xs py-6 px-4">No hay registros todavía.<br>Se guardan automáticamente a medianoche.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna derecha: detalle del día -->
+            <div class="lg:col-span-8">
+                <!-- Placeholder -->
+                <div id="hist-detail-placeholder" class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-24 text-gray-400">
+                    <svg class="w-16 h-16 mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <p class="font-semibold text-gray-500 text-base">Selecciona un día para ver el detalle</p>
+                    <p class="text-sm mt-1">Usa el calendario o la lista de registros</p>
+                </div>
+                <!-- Contenido del día -->
+                <div id="hist-detail-content" class="hidden space-y-5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ DASHBOARD ══ -->
     <div id="dashboard-view" class="hidden">
         <div class="flex justify-center gap-4 mb-8">
-            <button id="view-laboral-btn" class="view-btn active font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 transition shadow-sm">Laboral</button>
-            <button id="view-personal-btn" class="view-btn font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 transition shadow-sm">Personal</button>
+            <button id="view-laboral-btn"  class="view-btn active font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 shadow-sm">Laboral</button>
+            <button id="view-personal-btn" class="view-btn font-semibold py-3 px-8 rounded-lg bg-white text-gray-700 shadow-sm">Personal</button>
         </div>
         <div class="flex flex-wrap justify-center gap-3 mb-8">
             <button id="openModalBtn" class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-blue-700 transition">+ Nueva Tarea</button>
@@ -88,14 +169,13 @@
             <div id="meetings-monitor" class="bg-white p-6 rounded-lg shadow-lg">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-xl font-bold text-gray-800">Próximas Reuniones</h3>
-                    <button id="add-meeting-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow-sm hover:bg-indigo-700 transition text-sm">+ Nueva Reunión</button>
+                    <button id="add-meeting-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 text-sm">+ Nueva Reunión</button>
                 </div>
                 <div id="meetings-list" class="space-y-4"></div>
             </div>
         </div>
         <h2 class="text-2xl font-bold text-center mb-2">Matriz de Prioridades</h2>
         <div class="flex justify-center flex-wrap gap-x-4 gap-y-2 mb-6 text-xs text-gray-600">
-            <span class="font-medium">Estado:</span>
             <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-1.5"></span>Agendada</div>
             <div class="flex items-center"><span class="w-3 h-3 bg-purple-500 rounded-full mr-1.5"></span>Planificada</div>
             <div class="flex items-center"><span class="w-3 h-3 bg-orange-400 rounded-full mr-1.5"></span>Por Planificar</div>
@@ -109,24 +189,23 @@
         <div class="mt-12"><h2 class="text-2xl font-bold text-center mb-6">Planificación del Día</h2><div id="planner-section" class="bg-white p-6 rounded-lg shadow-lg"></div></div>
     </div>
 
+    <!-- ══ TODAS LAS TAREAS ══ -->
     <div id="all-tasks-view" class="hidden">
         <div class="bg-white p-6 rounded-lg shadow-lg">
             <div class="flex justify-between items-center border-b pb-4 mb-4">
                 <h3 class="text-xl font-bold">Todas las Tareas</h3>
                 <div class="flex gap-2">
-                    <button id="openModalBtnAllTasks" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition text-sm">+ Nueva Tarea</button>
-                    <button id="export-pdf-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-red-700 transition text-sm">Exportar PDF</button>
+                    <button id="openModalBtnAllTasks" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 text-sm">+ Nueva Tarea</button>
+                    <button id="export-pdf-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 text-sm">Exportar PDF</button>
                 </div>
             </div>
-            <div id="filters-container" class="mb-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div id="responsible-filter-container"></div>
-                    <div><label class="block text-sm font-medium text-gray-700">Importancia</label><select id="filter-importance" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
-                    <div><label class="block text-sm font-medium text-gray-700">Urgencia</label><select id="filter-urgency" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
-                    <div><label class="block text-sm font-medium text-gray-700">Fecha Vencimiento</label><input type="text" id="filter-date" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Filtrar por rango..."></div>
-                </div>
-                <div class="mt-4"><label class="block text-sm font-medium text-gray-700">Etiquetas</label><div id="filter-tags-container" class="flex flex-wrap gap-2 mt-2"></div></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                <div id="responsible-filter-container"></div>
+                <div><label class="block text-sm font-medium text-gray-700">Importancia</label><select id="filter-importance" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
+                <div><label class="block text-sm font-medium text-gray-700">Urgencia</label><select id="filter-urgency" class="mt-1 block w-full p-2 border border-gray-300 rounded-md"></select></div>
+                <div><label class="block text-sm font-medium text-gray-700">Fecha Vencimiento</label><input type="text" id="filter-date" class="mt-1 block w-full p-2 border border-gray-300 rounded-md" placeholder="Rango..."></div>
             </div>
+            <div class="mb-4"><label class="block text-sm font-medium text-gray-700">Etiquetas</label><div id="filter-tags-container" class="flex flex-wrap gap-2 mt-2"></div></div>
             <div id="all-tasks-list" class="space-y-3"></div>
             <div class="mt-12 border-t pt-8">
                 <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
@@ -136,7 +215,7 @@
                     </div>
                     <div class="flex flex-wrap gap-2 w-full md:w-auto">
                         <input type="text" id="filter-history-task-date" class="p-2 border border-gray-300 rounded-md text-sm w-full md:w-48" placeholder="Filtrar por fecha...">
-                        <input type="text" id="search-completed-tasks" class="w-full md:w-64 p-2 border border-gray-300 rounded-md text-sm" placeholder="Buscar por texto...">
+                        <input type="text" id="search-completed-tasks" class="w-full md:w-64 p-2 border border-gray-300 rounded-md text-sm" placeholder="Buscar...">
                     </div>
                 </div>
                 <div id="completed-tasks-list" class="space-y-3 opacity-80"></div>
@@ -144,6 +223,7 @@
         </div>
     </div>
 
+    <!-- ══ TODAS LAS REUNIONES ══ -->
     <div id="all-meetings-view" class="hidden">
         <div class="bg-white p-6 rounded-lg shadow-lg">
             <div class="flex justify-between items-center border-b pb-4 mb-4">
@@ -159,7 +239,7 @@
                     </div>
                     <div class="flex flex-wrap gap-2 w-full md:w-auto">
                         <input type="text" id="filter-history-meeting-date" class="p-2 border border-gray-300 rounded-md text-sm w-full md:w-48" placeholder="Filtrar por fecha...">
-                        <input type="text" id="search-completed-meetings" class="w-full md:w-64 p-2 border border-gray-300 rounded-md text-sm" placeholder="Buscar por texto...">
+                        <input type="text" id="search-completed-meetings" class="w-full md:w-64 p-2 border border-gray-300 rounded-md text-sm" placeholder="Buscar...">
                     </div>
                 </div>
                 <div id="completed-meetings-list" class="space-y-3 opacity-80"></div>
@@ -168,41 +248,41 @@
     </div>
 </div>
 
-<!-- Modales -->
+<!-- ══ MODALES ══ -->
 <div id="taskModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-10 z-50 hidden opacity-0 overflow-y-auto">
     <div id="modal-content" class="modal-content bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-2xl transform scale-95">
         <form id="taskForm">
             <input type="hidden" id="taskId">
             <h2 id="modal-title" class="text-2xl font-bold mb-6">Nueva Tarea</h2>
             <div class="grid grid-cols-2 gap-4 mb-4">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Tarea</label><select id="taskType" class="w-full p-2 border border-gray-300 rounded-md"><option value="laboral">Laboral</option><option value="personal">Personal</option></select></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Configuración Especial</label><label class="flex items-center h-10 border border-gray-300 rounded-md px-3 bg-gray-50 cursor-pointer"><input type="checkbox" id="isRepetitive" class="h-4 w-4 text-blue-600 border-gray-300 rounded"><span class="ml-2 text-xs text-gray-900 font-semibold">Tarea Repetitiva (Diaria)</span></label></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label><select id="taskType" class="w-full p-2 border border-gray-300 rounded-md"><option value="laboral">Laboral</option><option value="personal">Personal</option></select></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">Configuración Especial</label><label class="flex items-center h-10 border border-gray-300 rounded-md px-3 bg-gray-50 cursor-pointer"><input type="checkbox" id="isRepetitive" class="h-4 w-4 text-blue-600 rounded"><span class="ml-2 text-xs font-semibold">Tarea Repetitiva (Diaria)</span></label></div>
             </div>
             <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label><textarea id="description" rows="3" class="w-full p-2 border border-gray-300 rounded-md" required></textarea></div>
             <div id="progress-container-modal" class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Avance</label><div class="flex items-center gap-2"><input type="range" id="progress" min="0" max="100" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"><span id="progress-label" class="text-sm font-medium w-12 text-right">0%</span></div></div>
-            <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Tamaño de Tarea</label><select id="taskSize" class="w-full p-2 border border-gray-300 rounded-md" required><option value="Pequeña">Pequeña</option><option value="Mediana">Mediana</option><option value="Grande">Grande</option></select></div>
+            <div class="mb-4"><label class="block text-sm font-medium text-gray-700 mb-1">Tamaño</label><select id="taskSize" class="w-full p-2 border border-gray-300 rounded-md" required><option value="Pequeña">Pequeña</option><option value="Mediana">Mediana</option><option value="Grande">Grande</option></select></div>
             <div class="grid grid-cols-2 gap-4 mb-4"><div><label class="block text-sm font-medium text-gray-700 mb-1">Importancia</label><select id="importance" class="w-full p-2 border border-gray-300 rounded-md"></select></div><div><label class="block text-sm font-medium text-gray-700 mb-1">Urgencia</label><select id="urgency" class="w-full p-2 border border-gray-300 rounded-md"></select></div></div>
             <div id="date-controls-container" class="grid grid-cols-2 gap-4 mb-4">
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Fecha Vencimiento</label><input type="text" id="dueDate" class="w-full p-2 border border-gray-300 rounded-md" required></div>
                 <div id="planned-date-container"><label class="block text-sm font-medium text-gray-700 mb-1">Asignar a un día</label><input type="text" id="plannedDate" class="w-full p-2 border border-gray-300 rounded-md" placeholder="Opcional..."></div>
             </div>
             <div id="time-container-modal" class="grid grid-cols-2 gap-4 mb-4 hidden">
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Hora de Inicio</label><input type="text" id="startTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
-                <div><label class="block text-sm font-medium text-gray-700 mb-1">Hora de Fin</label><input type="text" id="endTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">Hora Inicio</label><input type="text" id="startTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                <div><label class="block text-sm font-medium text-gray-700 mb-1">Hora Fin</label><input type="text" id="endTime" class="w-full p-2 border border-gray-300 rounded-md"></div>
             </div>
             <div class="mb-4">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Responsable</label>
                 <select id="responsible-select" class="w-full p-2 border border-gray-300 rounded-md"></select>
-                <div class="flex gap-2 mt-2"><input type="text" id="new-responsible-input" placeholder="O crear nuevo responsable..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-responsible-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
+                <div class="flex gap-2 mt-2"><input type="text" id="new-responsible-input" placeholder="Crear nuevo responsable..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-responsible-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
             </div>
             <div class="mb-4">
                 <div class="flex justify-between items-center mb-1"><label class="block text-sm font-medium text-gray-700">Etiquetas</label><button type="button" id="manage-tags-btn" class="text-xs text-blue-600 hover:underline">Administrar</button></div>
                 <select id="tags-select" multiple class="w-full p-2 border border-gray-300 rounded-md h-24"></select>
-                <div class="flex gap-2 mt-2"><input type="text" id="new-tag-input" placeholder="O crear nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-tag-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
+                <div class="flex gap-2 mt-2"><input type="text" id="new-tag-input" placeholder="Crear nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-tag-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
             </div>
-            <div id="delegated-container" class="mb-6"><label class="flex items-center"><input type="checkbox" id="isDelegated" class="h-4 w-4 text-indigo-600 border-gray-300 rounded"><span class="ml-2 text-sm text-gray-900">Marcar como Delegada</span></label></div>
+            <div id="delegated-container" class="mb-6"><label class="flex items-center"><input type="checkbox" id="isDelegated" class="h-4 w-4 text-indigo-600 rounded"><span class="ml-2 text-sm">Marcar como Delegada</span></label></div>
             <div class="border-t pt-4 mt-6">
-                <h3 class="text-lg font-medium text-gray-800 mb-3">Checklist de Subtareas</h3>
+                <h3 class="text-lg font-medium mb-3">Checklist de Subtareas</h3>
                 <div id="subtasks-list" class="space-y-2 mb-3"></div>
                 <div class="flex flex-col sm:flex-row gap-2">
                     <input type="text" id="new-subtask-text" placeholder="Nueva subtarea..." class="flex-grow p-2 border border-gray-300 rounded-md">
@@ -273,489 +353,489 @@
 <div id="floating-timer-container" class="fixed bottom-5 right-5 bg-white p-2.5 rounded-lg shadow-xl w-40 z-40">
     <h4 class="font-bold text-gray-800 text-[10px] uppercase tracking-wider mb-1">Pomodoro</h4>
     <div class="flex justify-center gap-0.5 mb-2">
-        <button id="pomodoro-mode-btn" class="timer-btn active font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">Pom</button>
+        <button id="pomodoro-mode-btn"    class="timer-btn active font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">Pom</button>
         <button id="short-break-mode-btn" class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">S</button>
-        <button id="long-break-mode-btn" class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">L</button>
+        <button id="long-break-mode-btn"  class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">L</button>
     </div>
     <div id="timer-display" class="text-2xl font-bold text-center my-1 text-gray-800 tabular-nums">25:00</div>
     <div class="flex flex-col gap-1">
         <button id="start-pause-timer-btn" class="bg-blue-600 text-white font-bold py-1 px-2 rounded text-[9px]">INICIAR</button>
-        <button id="reset-timer-btn" class="bg-gray-500 text-white font-bold py-1 px-2 rounded text-[9px]">REINICIAR</button>
+        <button id="reset-timer-btn"       class="bg-gray-500 text-white font-bold py-1 px-2 rounded text-[9px]">REINICIAR</button>
     </div>
 </div>
 
-<!-- Firebase SDK -->
+<!-- Firebase -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-        apiKey: "AIzaSyAZZVxx8cWgrZS5NV1B1sxrKFA8TbQB0-c",
-        authDomain: "control-tareas-85ddc.firebaseapp.com",
-        projectId: "control-tareas-85ddc",
-        storageBucket: "control-tareas-85ddc.firebasestorage.app",
-        messagingSenderId: "319188644784",
-        appId: "1:319188644784:web:8d567089d8eb472d009c75"
+    const cfg = { apiKey:"AIzaSyAZZVxx8cWgrZS5NV1B1sxrKFA8TbQB0-c", authDomain:"control-tareas-85ddc.firebaseapp.com", projectId:"control-tareas-85ddc", storageBucket:"control-tareas-85ddc.firebasestorage.app", messagingSenderId:"319188644784", appId:"1:319188644784:web:8d567089d8eb472d009c75" };
+    const db=getFirestore(initializeApp(cfg)), REF=doc(db,"productividad","datos"), HREF=doc(db,"productividad","historial");
+    window._fbAPI={
+        save:     async d=>{ await setDoc(REF,d); },
+        load:     async ()=>{ const s=await getDoc(REF); return s.exists()?s.data():null; },
+        subscribe:cb=>onSnapshot(REF,s=>{ if(s.exists()) cb(s.data()); }),
+        saveHistory:async d=>{ await setDoc(HREF,d); },
+        loadHistory:async ()=>{ const s=await getDoc(HREF); return s.exists()?s.data():null; },
+        subscribeHistory:cb=>onSnapshot(HREF,s=>{ if(s.exists()) cb(s.data()); }),
     };
-
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const REF = doc(db, "productividad", "datos");
-
-    // Exponer API global para el script principal
-    window._fbAPI = {
-        save: async (data) => {
-            await setDoc(REF, data);
-        },
-        load: async () => {
-            const snap = await getDoc(REF);
-            return snap.exists() ? snap.data() : null;
-        },
-        subscribe: (cb) => {
-            return onSnapshot(REF, snap => {
-                if (snap.exists()) cb(snap.data());
-            });
-        }
-    };
-
-    // Avisar que Firebase está listo
-    window._fbReady = true;
+    window._fbReady=true;
     window.dispatchEvent(new CustomEvent("fbReady"));
 </script>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded',()=>{
 
-    // ── Indicador de estado ──────────────────────────────────────────────────
-    const setStatus = (state, text) => {
-        const el = document.getElementById('fb-status');
-        const tx = document.getElementById('fb-status-text');
-        el.className = `inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${state}`;
-        tx.textContent = text;
-    };
+    // ── Firebase ─────────────────────────────────────────────────────────────
+    const setStatus=(state,text)=>{ const el=document.getElementById('fb-status'),tx=document.getElementById('fb-status-text'); el.className=`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${state}`; tx.textContent=text; };
+    const fbSave=async data=>{ ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]))); if(window._fbAPI){ try{ await window._fbAPI.save(data); setStatus('connected','☁ Guardado'); }catch(e){ setStatus('offline','⚠ Error'); } } };
+    const fbSaveHistory=async h=>{ localStorage.setItem('dailyHistory',JSON.stringify(h)); if(window._fbAPI){ try{ await window._fbAPI.saveHistory(h); }catch(e){} } };
+    const fbLoadHistory=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.loadHistory(); if(d?.snapshots){ localStorage.setItem('dailyHistory',JSON.stringify(d)); return d; } }catch(e){} } return JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}}; };
+    const fbLoad=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.load(); if(d&&Array.isArray(d.tasks)){ ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(d[k]||[]))); setStatus('connected','☁ Conectado'); return d; } }catch(e){ setStatus('offline','⚠ Sin conexión'); } } return { tasks:JSON.parse(localStorage.getItem('tasks'))||[], meetings:JSON.parse(localStorage.getItem('meetings'))||[], allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]}, allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]} }; };
+    const parseData=d=>({ tasks:d.tasks||[], meetings:d.meetings||[], allTags:Array.isArray(d.allTags)?{laboral:d.allTags,personal:[]}:(d.allTags||{laboral:[],personal:[]}), allResponsibles:Array.isArray(d.allResponsibles)?{laboral:d.allResponsibles,personal:[]}:(d.allResponsibles||{laboral:[],personal:[]}) });
 
-    // ── Firebase: guardar y cargar ───────────────────────────────────────────
-    const fbSave = async (data) => {
-        // Siempre guardar en localStorage como respaldo
-        localStorage.setItem('tasks',          JSON.stringify(data.tasks));
-        localStorage.setItem('meetings',       JSON.stringify(data.meetings));
-        localStorage.setItem('allTags',        JSON.stringify(data.allTags));
-        localStorage.setItem('allResponsibles',JSON.stringify(data.allResponsibles));
-
-        if (window._fbAPI) {
-            try {
-                await window._fbAPI.save(data);
-                setStatus('connected', '☁ Guardado en nube');
-            } catch(e) {
-                setStatus('offline', '⚠ Error al guardar');
-                console.error('Firebase save error:', e);
-            }
-        }
-    };
-
-    const fbLoad = async () => {
-        if (window._fbAPI) {
-            try {
-                const d = await window._fbAPI.load();
-                if (d && Array.isArray(d.tasks)) {
-                    // Sincronizar localStorage con Firebase
-                    localStorage.setItem('tasks',          JSON.stringify(d.tasks || []));
-                    localStorage.setItem('meetings',       JSON.stringify(d.meetings || []));
-                    localStorage.setItem('allTags',        JSON.stringify(d.allTags || { laboral:[], personal:[] }));
-                    localStorage.setItem('allResponsibles',JSON.stringify(d.allResponsibles || { laboral:[], personal:[] }));
-                    setStatus('connected', '☁ Conectado a nube');
-                    return d;
-                }
-            } catch(e) {
-                setStatus('offline', '⚠ Sin conexión a nube');
-            }
-        }
-        // Fallback localStorage
-        return {
-            tasks:          JSON.parse(localStorage.getItem('tasks'))          || [],
-            meetings:       JSON.parse(localStorage.getItem('meetings'))       || [],
-            allTags:        JSON.parse(localStorage.getItem('allTags'))        || { laboral:[], personal:[] },
-            allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))|| { laboral:[], personal:[] }
-        };
-    };
-
-    const parseData = (d) => ({
-        tasks:          d.tasks || [],
-        meetings:       d.meetings || [],
-        allTags:        Array.isArray(d.allTags)         ? { laboral: d.allTags, personal: [] }         : (d.allTags         || { laboral:[], personal:[] }),
-        allResponsibles:Array.isArray(d.allResponsibles) ? { laboral: d.allResponsibles, personal: [] } : (d.allResponsibles || { laboral:[], personal:[] })
-    });
-
-    // ── DOM refs ─────────────────────────────────────────────────────────────
-    const dom = {
-        showDashboardBtn: document.getElementById('show-dashboard-btn'),
-        showAllTasksBtn: document.getElementById('show-all-tasks-btn'),
-        showCombinedPlannerBtn: document.getElementById('show-combined-planner-btn'),
-        dashboardView: document.getElementById('dashboard-view'),
-        allTasksView: document.getElementById('all-tasks-view'),
-        combinedPlannerView: document.getElementById('combined-planner-view'),
-        combinedPlannerContainer: document.getElementById('combined-planner-container'),
-        taskModal: document.getElementById('taskModal'),
-        modalContent: document.getElementById('modal-content'),
-        openModalBtn: document.getElementById('openModalBtn'),
-        closeModalBtn: document.getElementById('closeModalBtn'),
-        taskForm: document.getElementById('taskForm'),
-        deleteTaskBtn: document.getElementById('deleteTaskBtn'),
-        q1Tasks: document.getElementById('q1-tasks'),
-        q2Tasks: document.getElementById('q2-tasks'),
-        q3Tasks: document.getElementById('q3-tasks'),
-        q4Tasks: document.getElementById('q4-tasks'),
-        newTagInput: document.getElementById('new-tag-input'),
-        addTagBtn: document.getElementById('add-tag-btn'),
-        newResponsibleInput: document.getElementById('new-responsible-input'),
-        addResponsibleBtn: document.getElementById('add-responsible-btn'),
-        plannerSection: document.getElementById('planner-section'),
-        allTasksList: document.getElementById('all-tasks-list'),
-        completedTasksList: document.getElementById('completed-tasks-list'),
-        searchCompletedTasks: document.getElementById('search-completed-tasks'),
-        toggleAllCompletedTasks: document.getElementById('toggle-all-completed-tasks'),
-        filterHistoryTaskDate: document.getElementById('filter-history-task-date'),
-        allMeetingsList: document.getElementById('all-meetings-list'),
-        completedMeetingsList: document.getElementById('completed-meetings-list'),
-        searchCompletedMeetings: document.getElementById('search-completed-meetings'),
-        toggleAllCompletedMeetings: document.getElementById('toggle-all-completed-meetings'),
-        filterHistoryMeetingDate: document.getElementById('filter-history-meeting-date'),
-        filterImportance: document.getElementById('filter-importance'),
-        filterUrgency: document.getElementById('filter-urgency'),
-        filterTagsContainer: document.getElementById('filter-tags-container'),
-        responsibleFilterContainer: document.getElementById('responsible-filter-container'),
-        exportBtn: document.getElementById('export-btn'),
-        exportPdfBtn: document.getElementById('export-pdf-btn'),
-        importFile: document.getElementById('import-file'),
-        isDelegatedCheckbox: document.getElementById('isDelegated'),
-        isRepetitiveCheckbox: document.getElementById('isRepetitive'),
-        plannedDateContainer: document.getElementById('planned-date-container'),
-        dateControlsContainer: document.getElementById('date-controls-container'),
-        delegatedContainer: document.getElementById('delegated-container'),
-        timeContainerModal: document.getElementById('time-container-modal'),
-        subtasksList: document.getElementById('subtasks-list'),
-        newSubtaskText: document.getElementById('new-subtask-text'),
-        newSubtaskResponsible: document.getElementById('new-subtask-responsible'),
-        addSubtaskBtn: document.getElementById('add-subtask-btn'),
-        modalTitle: document.getElementById('modal-title'),
-        meetingsList: document.getElementById('meetings-list'),
-        addMeetingBtn: document.getElementById('add-meeting-btn'),
-        meetingModal: document.getElementById('meetingModal'),
-        meetingForm: document.getElementById('meetingForm'),
-        closeMeetingModalBtn: document.getElementById('closeMeetingModalBtn'),
-        deleteMeetingBtn: document.getElementById('deleteMeetingBtn'),
-        meetingModalTitle: document.getElementById('meeting-modal-title'),
-        responsibleSelect: document.getElementById('responsible-select'),
-        tagsSelect: document.getElementById('tags-select'),
-        scheduleModal: document.getElementById('scheduleModal'),
-        scheduleForm: document.getElementById('scheduleForm'),
-        closeScheduleModalBtn: document.getElementById('closeScheduleModalBtn'),
-        scheduleTaskDescription: document.getElementById('schedule-task-description'),
-        notificationToast: document.getElementById('notification-toast'),
-        notificationMessage: document.getElementById('notification-message'),
-        timerDisplay: document.getElementById('timer-display'),
-        startPauseTimerBtn: document.getElementById('start-pause-timer-btn'),
-        resetTimerBtn: document.getElementById('reset-timer-btn'),
-        pomodoroModeBtn: document.getElementById('pomodoro-mode-btn'),
-        shortBreakModeBtn: document.getElementById('short-break-mode-btn'),
-        longBreakModeBtn: document.getElementById('long-break-mode-btn'),
-        viewLaboralBtn: document.getElementById('view-laboral-btn'),
-        viewPersonalBtn: document.getElementById('view-personal-btn'),
-        progressContainerModal: document.getElementById('progress-container-modal'),
-        progressLabel: document.getElementById('progress-label'),
-        showAllMeetingsBtn: document.getElementById('show-all-meetings-btn'),
-        allMeetingsView: document.getElementById('all-meetings-view'),
-        filterMeetingDate: document.getElementById('filter-meeting-date'),
-        manageTagsBtn: document.getElementById('manage-tags-btn'),
-        tagManagementModal: document.getElementById('tagManagementModal'),
-        tagManagementList: document.getElementById('tag-management-list'),
-        closeTagManagementModalBtn: document.getElementById('closeTagManagementModalBtn'),
-        openModalBtnAllTasks: document.getElementById('openModalBtnAllTasks'),
+    // ── DOM ──────────────────────────────────────────────────────────────────
+    const $=id=>document.getElementById(id);
+    const dom={
+        showDashboardBtn:$('show-dashboard-btn'), showAllTasksBtn:$('show-all-tasks-btn'),
+        showCombinedPlannerBtn:$('show-combined-planner-btn'), showAllMeetingsBtn:$('show-all-meetings-btn'),
+        showHistoryBtn:$('show-history-btn'),
+        dashboardView:$('dashboard-view'), allTasksView:$('all-tasks-view'),
+        combinedPlannerView:$('combined-planner-view'), allMeetingsView:$('all-meetings-view'),
+        historyView:$('history-view'),
+        combinedPlannerContainer:$('combined-planner-container'),
+        histCalDays:$('hist-cal-days'), histMonthLabel:$('hist-month-label'),
+        histPrevMonth:$('hist-prev-month'), histNextMonth:$('hist-next-month'),
+        histDetailPlaceholder:$('hist-detail-placeholder'), histDetailContent:$('hist-detail-content'),
+        histDaysList:$('hist-days-list'), histListEmpty:$('hist-list-empty'),
+        histCountLabel:$('hist-count-label'), histBadge:$('hist-badge'),
+        taskModal:$('taskModal'), modalContent:$('modal-content'),
+        openModalBtn:$('openModalBtn'), closeModalBtn:$('closeModalBtn'),
+        taskForm:$('taskForm'), deleteTaskBtn:$('deleteTaskBtn'),
+        q1Tasks:$('q1-tasks'), q2Tasks:$('q2-tasks'), q3Tasks:$('q3-tasks'), q4Tasks:$('q4-tasks'),
+        newTagInput:$('new-tag-input'), addTagBtn:$('add-tag-btn'),
+        newResponsibleInput:$('new-responsible-input'), addResponsibleBtn:$('add-responsible-btn'),
+        plannerSection:$('planner-section'), allTasksList:$('all-tasks-list'),
+        completedTasksList:$('completed-tasks-list'), searchCompletedTasks:$('search-completed-tasks'),
+        toggleAllCompletedTasks:$('toggle-all-completed-tasks'), filterHistoryTaskDate:$('filter-history-task-date'),
+        allMeetingsList:$('all-meetings-list'), completedMeetingsList:$('completed-meetings-list'),
+        searchCompletedMeetings:$('search-completed-meetings'), toggleAllCompletedMeetings:$('toggle-all-completed-meetings'),
+        filterHistoryMeetingDate:$('filter-history-meeting-date'),
+        filterImportance:$('filter-importance'), filterUrgency:$('filter-urgency'),
+        filterTagsContainer:$('filter-tags-container'), responsibleFilterContainer:$('responsible-filter-container'),
+        exportBtn:$('export-btn'), exportPdfBtn:$('export-pdf-btn'), importFile:$('import-file'),
+        isDelegatedCheckbox:$('isDelegated'), isRepetitiveCheckbox:$('isRepetitive'),
+        plannedDateContainer:$('planned-date-container'), dateControlsContainer:$('date-controls-container'),
+        delegatedContainer:$('delegated-container'), timeContainerModal:$('time-container-modal'),
+        subtasksList:$('subtasks-list'), newSubtaskText:$('new-subtask-text'),
+        newSubtaskResponsible:$('new-subtask-responsible'), addSubtaskBtn:$('add-subtask-btn'),
+        modalTitle:$('modal-title'), meetingsList:$('meetings-list'), addMeetingBtn:$('add-meeting-btn'),
+        meetingModal:$('meetingModal'), meetingForm:$('meetingForm'),
+        closeMeetingModalBtn:$('closeMeetingModalBtn'), deleteMeetingBtn:$('deleteMeetingBtn'),
+        meetingModalTitle:$('meeting-modal-title'), responsibleSelect:$('responsible-select'),
+        tagsSelect:$('tags-select'), scheduleModal:$('scheduleModal'), scheduleForm:$('scheduleForm'),
+        closeScheduleModalBtn:$('closeScheduleModalBtn'), scheduleTaskDescription:$('schedule-task-description'),
+        notificationToast:$('notification-toast'), notificationMessage:$('notification-message'),
+        timerDisplay:$('timer-display'), startPauseTimerBtn:$('start-pause-timer-btn'),
+        resetTimerBtn:$('reset-timer-btn'), pomodoroModeBtn:$('pomodoro-mode-btn'),
+        shortBreakModeBtn:$('short-break-mode-btn'), longBreakModeBtn:$('long-break-mode-btn'),
+        viewLaboralBtn:$('view-laboral-btn'), viewPersonalBtn:$('view-personal-btn'),
+        progressContainerModal:$('progress-container-modal'), progressLabel:$('progress-label'),
+        filterMeetingDate:$('filter-meeting-date'), manageTagsBtn:$('manage-tags-btn'),
+        tagManagementModal:$('tagManagementModal'), tagManagementList:$('tag-management-list'),
+        closeTagManagementModalBtn:$('closeTagManagementModalBtn'), openModalBtnAllTasks:$('openModalBtnAllTasks'),
     };
 
     // ── Estado ───────────────────────────────────────────────────────────────
-    let tasks = [], meetings = [], allTags = { laboral:[], personal:[] }, allResponsibles = { laboral:[], personal:[] };
-    let currentSubtasks = [];
-    let filters = { importance:'all', urgency:'all', tag:null, dateRange:[], responsible:'all', completedTaskSearch:'', completedMeetingSearch:'', showAllCompletedTasks:false, showAllCompletedMeetings:false, historyTaskDateRange:[], historyMeetingDateRange:[] };
-    let firedAlerts = new Set();
-    let currentView = 'laboral';
-    let fbUnsubscribe = null;
+    let tasks=[],meetings=[],allTags={laboral:[],personal:[]},allResponsibles={laboral:[],personal:[]};
+    let dailyHistory={snapshots:{}};
+    let currentSubtasks=[],filters={importance:'all',urgency:'all',tag:null,dateRange:[],responsible:'all',completedTaskSearch:'',completedMeetingSearch:'',showAllCompletedTasks:false,showAllCompletedMeetings:false,historyTaskDateRange:[],historyMeetingDateRange:[]};
+    let firedAlerts=new Set(),currentView='laboral',fbUnsubscribe=null;
+    let histCalYear=new Date().getFullYear(),histCalMonth=new Date().getMonth(),histSelectedDate=null;
 
-    // ── Temporizador ─────────────────────────────────────────────────────────
-    const TIMER_MODES = { pomodoro:25*60, shortBreak:5*60, longBreak:15*60 };
-    let timerMode = 'pomodoro', timeRemaining = TIMER_MODES.pomodoro, isTimerRunning = false, timerIntervalId = null, timerEndTime = 0;
+    // ── Timer ────────────────────────────────────────────────────────────────
+    const TIMER_MODES={pomodoro:25*60,shortBreak:5*60,longBreak:15*60};
+    let timerMode='pomodoro',timeRemaining=TIMER_MODES.pomodoro,isTimerRunning=false,timerIntervalId=null,timerEndTime=0;
 
     // ── Flatpickr ────────────────────────────────────────────────────────────
-    const fpLocale = {
-        firstDayOfWeek:1,
-        weekdays:{ shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"], longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] },
-        months:{ shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"], longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"] }
-    };
-    const fpBase = { dateFormat:"Y-m-d", altInput:true, altFormat:"D, M j, Y", locale:fpLocale };
-    const fpTime = { enableTime:true, noCalendar:true, dateFormat:"H:i", time_24hr:true, minuteIncrement:15 };
-
-    const dueDatepicker    = flatpickr("#dueDate",     { ...fpBase, onChange(_, ds){ if(document.getElementById('plannedDate')._flatpickr && !document.getElementById('plannedDate')._flatpickr.selectedDates.length) {} } });
-    const plannedDatepicker= flatpickr("#plannedDate", { ...fpBase, onChange(sd){ if(sd.length){ dom.timeContainerModal.classList.remove('hidden'); } else { dom.timeContainerModal.classList.add('hidden'); startTimepicker.clear(); endTimepicker.clear(); } } });
-    const filterDatepicker = flatpickr("#filter-date", { ...fpBase, mode:"range", onChange:[] });
-    const filterMeetingDatepicker = flatpickr("#filter-meeting-date", { ...fpBase, mode:"range", onChange:[] });
-    const meetingDatepicker= flatpickr("#meetingDate",  { ...fpBase, onChange:[] });
-    const historyTaskDatepicker    = flatpickr("#filter-history-task-date",    { ...fpBase, mode:"range", onChange: d => { filters.historyTaskDateRange = d; renderAllTasksList(); } });
-    const historyMeetingDatepicker = flatpickr("#filter-history-meeting-date", { ...fpBase, mode:"range", onChange: d => { filters.historyMeetingDateRange = d; renderAllMeetingsList(); } });
-    const meetingStartTimePicker   = flatpickr("#meetingStartTime", { ...fpTime, time_24hr:false, onChange(sd, ds){ if(sd.length){ meetingEndTimePicker.setDate(sd[0],false); meetingEndTimePicker.set('minTime',ds); } } });
-    const meetingEndTimePicker     = flatpickr("#meetingEndTime",   { ...fpTime, time_24hr:false });
-    const startTimepicker          = flatpickr("#startTime",  { ...fpTime, onChange(sd){ if(sd.length) endTimepicker.setDate(sd[0],false); } });
-    const endTimepicker            = flatpickr("#endTime",    fpTime);
-    const scheduleStartTimePicker  = flatpickr("#scheduleStartTime", { ...fpTime, onChange(sd){ if(sd.length) scheduleEndTimePicker.setDate(sd[0],false); } });
-    const scheduleEndTimePicker    = flatpickr("#scheduleEndTime",   fpTime);
-    const rescheduleDatePicker     = flatpickr(document.createElement('input'), { ...fpBase, onChange:[] });
+    const fpL={firstDayOfWeek:1,weekdays:{shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"]},months:{shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]}};
+    const fpB={dateFormat:"Y-m-d",altInput:true,altFormat:"D, M j, Y",locale:fpL};
+    const fpT={enableTime:true,noCalendar:true,dateFormat:"H:i",time_24hr:true,minuteIncrement:15};
+    const dueDatepicker    =flatpickr("#dueDate",fpB);
+    const plannedDatepicker=flatpickr("#plannedDate",{...fpB,onChange(sd){dom.timeContainerModal.classList.toggle('hidden',!sd.length);if(!sd.length){startTP.clear();endTP.clear();}}});
+    const filterDatepicker =flatpickr("#filter-date",{...fpB,mode:"range",onChange:[]});
+    const filterMtgDP      =flatpickr("#filter-meeting-date",{...fpB,mode:"range",onChange:[]});
+    const meetingDatepicker=flatpickr("#meetingDate",{...fpB,onChange:[]});
+    const histTaskDP       =flatpickr("#filter-history-task-date",{...fpB,mode:"range",onChange:d=>{filters.historyTaskDateRange=d;renderAllTasksList();}});
+    const histMtgDP        =flatpickr("#filter-history-meeting-date",{...fpB,mode:"range",onChange:d=>{filters.historyMeetingDateRange=d;renderAllMeetingsList();}});
+    const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(sd[0],false);mtgEndTP.set('minTime',ds);}}});
+    const mtgEndTP         =flatpickr("#meetingEndTime",{...fpT,time_24hr:false});
+    const startTP          =flatpickr("#startTime",{...fpT,onChange(sd){if(sd.length)endTP.setDate(sd[0],false);}});
+    const endTP            =flatpickr("#endTime",fpT);
+    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,onChange(sd){if(sd.length)schEndTP.setDate(sd[0],false);}});
+    const schEndTP         =flatpickr("#scheduleEndTime",fpT);
+    const rescheduleDP     =flatpickr(document.createElement('input'),{...fpB,onChange:[]});
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    const parseTime = t => { if(!t) return 0; const [h,m]=t.split(':').map(Number); return h+m/60; };
-    const formatDateDisplay = s => { if(!s) return 'N/A'; return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'}); };
-
-    const updatePlannerClock = () => {
-        const now = new Date();
-        document.querySelectorAll('#planner-clock').forEach(el => { el.textContent = now.toLocaleTimeString('es-ES',{hour12:false}); });
-        document.querySelectorAll('#time-now-line').forEach(tl => {
-            const h=now.getHours(), m=now.getMinutes(), hh=40;
-            if(h>=6&&h<=23){ tl.style.top=((h-6)*hh+(m/60)*hh)+'px'; tl.style.display='block'; } else { tl.style.display='none'; }
+    const parseTime=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h+m/60;};
+    const formatDateDisplay=s=>{if(!s)return'N/A';return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'});};
+    const updatePlannerClock=()=>{
+        const now=new Date();
+        document.querySelectorAll('#planner-clock').forEach(el=>{el.textContent=now.toLocaleTimeString('es-ES',{hour12:false});});
+        document.querySelectorAll('#time-now-line').forEach(tl=>{
+            const h=now.getHours(),m=now.getMinutes(),hh=40;
+            if(h>=6&&h<=23){tl.style.top=((h-6)*hh+(m/60)*hh)+'px';tl.style.display='block';}else tl.style.display='none';
         });
     };
+    const saveData=()=>fbSave({tasks,meetings,allTags,allResponsibles});
+    const applyData=raw=>{const d=parseData(raw);tasks=d.tasks;meetings=d.meetings;allTags=d.allTags;allResponsibles=d.allResponsibles;checkDueDates();renderAll();};
 
-    // ── saveData: guarda estado actual en Firebase + localStorage ────────────
-    const saveData = () => {
-        fbSave({ tasks, meetings, allTags, allResponsibles });
+    // ════════════════════════════════════════════════════════════════════════
+    //  HISTORIAL
+    // ════════════════════════════════════════════════════════════════════════
+    const buildDaySnapshot=dateStr=>{
+        const dayTasks=tasks.filter(t=>t.plannedDate===dateStr&&!t.isRepetitive);
+        const repTasks=tasks.filter(t=>t.isRepetitive);
+        const dayMtgs=meetings.filter(m=>m.date===dateStr);
+        const dayName=new Date(dateStr+'T00:00:00').toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+        const tot=dayTasks.length+dayMtgs.length+repTasks.length;
+        const done=dayTasks.filter(t=>t.progress===100).length+dayMtgs.filter(m=>m.completed).length+repTasks.filter(t=>t.completedDates?.includes(dateStr)).length;
+        return{dateStr,dayName,savedAt:new Date().toISOString(),completionPct:tot>0?Math.round(done/tot*100):0,
+            stats:{totalTasks:dayTasks.length,completedTasks:dayTasks.filter(t=>t.progress===100).length,totalMeetings:dayMtgs.length,doneMeetings:dayMtgs.filter(m=>m.completed).length,repDone:repTasks.filter(t=>t.completedDates?.includes(dateStr)).length,repTotal:repTasks.length},
+            tasks:JSON.parse(JSON.stringify(dayTasks)),
+            repTasks:JSON.parse(JSON.stringify(repTasks.map(t=>({...t,doneToday:!!(t.completedDates?.includes(dateStr))})))),
+            meetings:JSON.parse(JSON.stringify(dayMtgs))};
+    };
+    const saveDaySnapshot=async dateStr=>{
+        dailyHistory.snapshots[dateStr]=buildDaySnapshot(dateStr);
+        await fbSaveHistory(dailyHistory);
+        updateHistBadge();
+        renderHistCalendar();
+        renderHistDaysList();
+    };
+    const scheduleMidnightSnapshot=()=>{
+        const now=new Date(),midnight=new Date();midnight.setHours(24,0,0,500);
+        setTimeout(async()=>{
+            const yest=new Date(Date.now()-864e5).toISOString().split('T')[0];
+            await saveDaySnapshot(yest);
+            showNotification('📸 Cronograma de ayer guardado automáticamente.');
+            scheduleMidnightSnapshot();
+        },midnight-now);
+    };
+    const updateHistBadge=()=>{
+        const n=Object.keys(dailyHistory.snapshots).length;
+        if(n>0){dom.histBadge.textContent=n;dom.histBadge.classList.remove('hidden');}
+        else dom.histBadge.classList.add('hidden');
     };
 
-    // ── Aplicar datos recibidos (desde Firebase o localStorage) ───────────────
-    const applyData = (raw) => {
-        const d = parseData(raw);
-        tasks          = d.tasks;
-        meetings       = d.meetings;
-        allTags        = d.allTags;
-        allResponsibles= d.allResponsibles;
-        checkDueDates();
-        renderAll();
-    };
-
-    // ── Carga inicial ─────────────────────────────────────────────────────────
-    const initApp = async () => {
-        setStatus('connecting', '⟳ Conectando...');
-
-        // 1. Mostrar datos de localStorage inmediatamente (sin esperar red)
-        const local = {
-            tasks:          JSON.parse(localStorage.getItem('tasks'))          || [],
-            meetings:       JSON.parse(localStorage.getItem('meetings'))       || [],
-            allTags:        JSON.parse(localStorage.getItem('allTags'))        || { laboral:[], personal:[] },
-            allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))|| { laboral:[], personal:[] }
-        };
-        applyData(local);
-        switchView('combined');
-
-        // 2. Intentar cargar desde Firebase (con timeout 8s)
-        const fbPromise = fbLoad();
-        const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 8000));
-
-        const fbData = await Promise.race([fbPromise, timeoutPromise]);
-
-        if (fbData && Array.isArray(fbData.tasks)) {
-            applyData(fbData);
-            setStatus('connected', '☁ Conectado a nube');
-
-            // 3. Suscribir a cambios en tiempo real
-            if (window._fbAPI) {
-                if (fbUnsubscribe) fbUnsubscribe();
-                fbUnsubscribe = window._fbAPI.subscribe(data => {
-                    applyData(data);
-                    setStatus('connected', '☁ Sincronizado');
-                });
-            }
-        } else {
-            setStatus('local', '💾 Modo local (sin nube)');
+    // ── Calendario ────────────────────────────────────────────────────────────
+    const renderHistCalendar=()=>{
+        const calHeader=document.getElementById('hist-cal-header');
+        if(calHeader&&!calHeader.children.length){
+            ['Lu','Ma','Mi','Ju','Vi','Sa','Do'].forEach(d=>{
+                const el=document.createElement('div');
+                el.style.cssText='text-align:center;font-size:9px;font-weight:600;color:#9ca3af;padding:2px 0;';
+                el.textContent=d; calHeader.appendChild(el);
+            });
         }
+        const MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        dom.histMonthLabel.textContent=`${MONTHS[histCalMonth]} ${histCalYear}`;
+        const today=new Date().toISOString().split('T')[0];
+        const startWd=(new Date(histCalYear,histCalMonth,1).getDay()+6)%7;
+        const daysInMonth=new Date(histCalYear,histCalMonth+1,0).getDate();
+        let html='';
+        for(let i=0;i<startWd;i++) html+=`<div class="hist-cal-day empty"></div>`;
+        for(let d=1;d<=daysInMonth;d++){
+            const ds=`${histCalYear}-${String(histCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const hasSnap=!!dailyHistory.snapshots[ds];
+            const isToday=ds===today,isSel=ds===histSelectedDate;
+            let cls='hist-cal-day';
+            if(hasSnap) cls+=' has-snap';
+            if(isToday) cls+=' today-mark';
+            if(isSel) cls+=' selected';
+            const dot=hasSnap&&!isSel?'<div class="snap-dot"></div>':'';
+            html+=`<div class="${cls}" data-date="${ds}">${d}${dot}</div>`;
+        }
+        dom.histCalDays.innerHTML=html;
     };
 
-    const checkDueDates = () => {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const tom = new Date(today); tom.setDate(today.getDate()+1);
-        let upd = false;
-        tasks.forEach(t => { if(t.dueDate && new Date(t.dueDate)<=tom && !t.isUrgent){ t.isUrgent=true; upd=true; } });
-        if(upd) saveData();
+    // ── Lista lateral de días ─────────────────────────────────────────────────
+    const renderHistDaysList=()=>{
+        const snaps=Object.values(dailyHistory.snapshots).sort((a,b)=>b.dateStr.localeCompare(a.dateStr));
+        const n=snaps.length;
+        dom.histCountLabel.textContent=n>0?`${n} registro${n>1?'s':''}`:'' ;
+        if(!n){ dom.histListEmpty.classList.remove('hidden'); return; }
+        dom.histListEmpty.classList.add('hidden');
+        dom.histDaysList.innerHTML=snaps.map(s=>{
+            const pct=s.completionPct||0;
+            const barCol=pct>=80?'bg-green-400':pct>=50?'bg-yellow-400':'bg-red-400';
+            const isActive=s.dateStr===histSelectedDate;
+            return`<div class="hist-day-row px-4 py-2.5 cursor-pointer ${isActive?'active-row':''}" data-date="${s.dateStr}">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <p class="text-xs font-semibold text-gray-800 truncate capitalize">${s.dayName||formatDateDisplay(s.dateStr)}</p>
+                        <p class="text-[10px] text-gray-400">${s.stats.completedTasks}/${s.stats.totalTasks} tareas · ${s.stats.doneMeetings}/${s.stats.totalMeetings} reuniones</p>
+                    </div>
+                    <span class="text-xs font-bold flex-shrink-0 ${pct>=80?'text-green-600':pct>=50?'text-yellow-600':'text-red-500'}">${pct}%</span>
+                </div>
+                <div class="pct-bar-wrap mt-1.5"><div class="pct-bar ${barCol}" style="width:${pct}%"></div></div>
+            </div>`;
+        }).join('');
+    };
+
+    // ── Detalle del día ───────────────────────────────────────────────────────
+    const showHistDayDetail=dateStr=>{
+        histSelectedDate=dateStr;
+        renderHistCalendar();
+        renderHistDaysList();
+        dom.histDetailPlaceholder.classList.add('hidden');
+        dom.histDetailContent.classList.remove('hidden');
+
+        const snap=dailyHistory.snapshots[dateStr];
+        if(!snap){
+            dom.histDetailContent.innerHTML=`<div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400"><p class="text-4xl mb-3">📭</p><p class="font-semibold text-gray-600">${formatDateDisplay(dateStr)}</p><p class="text-sm mt-1">No hay cronograma guardado para este día.</p></div>`;
+            return;
+        }
+
+        const pct=snap.completionPct||0;
+        const barCol=pct>=80?'bg-green-500':pct>=50?'bg-yellow-500':'bg-red-400';
+        const pctCol=pct>=80?'text-green-600':pct>=50?'text-yellow-600':'text-red-500';
+
+        // Línea de tiempo
+        const sh=6,eh=22,hh=36;
+        let tlRows='';
+        for(let i=sh;i<=eh;i++){
+            const lbl=i>12?`${i-12}p`:(i===12?'12p':`${i}a`);
+            tlRows+=`<div class="flex items-start" style="height:${hh}px;"><div class="text-right w-8 pr-1.5 text-[9px] text-gray-400 -mt-1.5 flex-shrink-0 select-none">${lbl}</div><div class="flex-grow border-t border-gray-100 h-full"></div></div>`;
+        }
+        const allEvs=[
+            ...(snap.tasks||[]).filter(t=>t.startTime&&t.endTime).map(t=>({...t,evType:'task',start:parseTime(t.startTime),end:parseTime(t.endTime)})),
+            ...(snap.meetings||[]).map(m=>({...m,evType:'meeting',start:parseTime(m.startTime),end:parseTime(m.endTime)}))
+        ];
+        const evHtml=allEvs.map(ev=>{
+            if(ev.start<sh||ev.start>=eh||ev.end<=ev.start) return'';
+            const top=(ev.start-sh)*hh,h=Math.max(18,(ev.end-ev.start)*hh-1);
+            if(ev.evType==='task'){
+                const done=ev.progress===100;
+                const cl=done?'bg-green-100 border-green-400':(ev.type==='personal'?'bg-orange-100 border-orange-300':'bg-blue-100 border-blue-300');
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${done?'✔ ':''}${ev.description}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
+            }else{
+                const cl=ev.completed?'bg-teal-100 border-teal-300':'bg-cyan-100 border-cyan-300';
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${ev.completed?'✔ ':''}${ev.title}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
+            }
+        }).join('');
+
+        // Checklist
+        const repHtml=(snap.repTasks||[]).length>0
+            ?snap.repTasks.map(t=>`<div class="flex items-center gap-2.5 py-1.5 border-b border-gray-100 last:border-0"><span class="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold border-2 ${t.doneToday?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${t.doneToday?'✓':''}</span><span class="text-xs flex-grow ${t.doneToday?'line-through text-gray-400':'text-gray-700'}">${t.description}</span><span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'P':'L'}</span></div>`).join('')
+            :'<p class="text-xs text-gray-400 py-1">Sin checklist registrado.</p>';
+
+        // Tareas
+        const tasksHtml=(snap.tasks||[]).length>0
+            ?snap.tasks.map(t=>{const done=t.progress===100;return`<div class="flex items-center gap-3 p-3 rounded-lg border ${done?'border-green-200 bg-green-50':t.type==='personal'?'border-orange-100 bg-orange-50':'border-blue-100 bg-blue-50'}"><span class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${done?'bg-green-500 text-white':'bg-white border-2 border-gray-300 text-gray-500'}">${done?'✓':t.progress+'%'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold truncate ${done?'line-through text-gray-400':''}">${t.description}</p><p class="text-xs text-gray-400">${t.startTime&&t.endTime?t.startTime+'–'+t.endTime:'Sin horario'} · ${t.responsible||'Sin asignar'}</p></div><span class="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'Personal':'Laboral'}</span></div>`;}).join('')
+            :'<p class="text-sm text-gray-400 py-2">Sin tareas planificadas para este día.</p>';
+
+        // Reuniones
+        const mtgsHtml=(snap.meetings||[]).length>0
+            ?snap.meetings.map(m=>`<div class="flex items-center gap-3 p-3 rounded-lg border ${m.completed?'border-teal-200 bg-teal-50':'border-cyan-100 bg-cyan-50'}"><span class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.completed?'bg-teal-500 text-white':'bg-gray-200 text-gray-500'}">${m.completed?'✓':'•'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold ${m.completed?'line-through text-gray-400':''}">${m.title}</p><p class="text-xs text-gray-400">${m.startTime||''}${m.endTime?'–'+m.endTime:''}</p></div><span class="text-[9px] font-bold ${m.completed?'text-teal-600':'text-gray-400'}">${m.completed?'Realizada':'Pendiente'}</span></div>`).join('')
+            :'<p class="text-sm text-gray-400 py-2">Sin reuniones.</p>';
+
+        const savedAt=snap.savedAt?new Date(snap.savedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+
+        dom.histDetailContent.innerHTML=`
+            <!-- Encabezado -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 capitalize">${snap.dayName||formatDateDisplay(dateStr)}</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">${savedAt?'Guardado el '+savedAt:''}</p>
+                    </div>
+                    <div class="flex-shrink-0 text-right">
+                        <span class="text-3xl font-black ${pctCol}">${pct}%</span>
+                        <p class="text-xs text-gray-400">completitud global</p>
+                    </div>
+                </div>
+                <div class="pct-bar-wrap mt-3"><div class="pct-bar ${barCol}" style="width:${pct}%"></div></div>
+                <!-- 4 stats -->
+                <div class="grid grid-cols-4 gap-3 mt-4">
+                    <div class="stat-card bg-blue-50 border border-blue-100"><div class="val text-blue-600">${snap.stats.completedTasks}<span class="text-sm font-normal text-blue-300">/${snap.stats.totalTasks}</span></div><div class="lbl">Tareas</div></div>
+                    <div class="stat-card bg-cyan-50 border border-cyan-100"><div class="val text-cyan-600">${snap.stats.doneMeetings}<span class="text-sm font-normal text-cyan-300">/${snap.stats.totalMeetings}</span></div><div class="lbl">Reuniones</div></div>
+                    <div class="stat-card bg-indigo-50 border border-indigo-100"><div class="val text-indigo-600">${snap.stats.repDone}<span class="text-sm font-normal text-indigo-300">/${snap.stats.repTotal}</span></div><div class="lbl">Checklist</div></div>
+                    <div class="stat-card ${pct>=80?'bg-green-50 border-green-100':pct>=50?'bg-yellow-50 border-yellow-100':'bg-red-50 border-red-100'}"><div class="val ${pctCol}">${pct}<span class="text-sm font-normal">%</span></div><div class="lbl">Global</div></div>
+                </div>
+            </div>
+
+            <!-- Grid: línea de tiempo + detalle -->
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-5">
+                <!-- Línea de tiempo (2/5) -->
+                <div class="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">🕐 Línea de Tiempo</h3>
+                    <div class="flex flex-wrap gap-3 mb-3 text-[10px] text-gray-400">
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-100 border border-blue-300 rounded inline-block"></span>Laboral</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-orange-100 border border-orange-300 rounded inline-block"></span>Personal</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-green-100 border border-green-300 rounded inline-block"></span>Completado</span>
+                    </div>
+                    <div class="overflow-y-auto" style="max-height:420px;">
+                        <div class="relative" style="height:${(eh-sh+1)*hh}px;">${tlRows}<div class="absolute top-0 bottom-0 left-8 right-0">${evHtml}</div></div>
+                    </div>
+                </div>
+
+                <!-- Columna derecha (3/5) -->
+                <div class="md:col-span-3 space-y-4">
+                    <!-- Checklist -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">↺ Checklist Diario <span class="text-xs font-normal text-gray-400">(${snap.stats.repDone}/${snap.stats.repTotal} completados)</span></h3>
+                        <div class="bg-indigo-50 rounded-lg p-3">${repHtml}</div>
+                    </div>
+                    <!-- Tareas -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">✔ Tareas del Día <span class="text-xs font-normal text-gray-400">(${snap.stats.completedTasks}/${snap.stats.totalTasks} completadas)</span></h3>
+                        <div class="space-y-2">${tasksHtml}</div>
+                    </div>
+                    <!-- Reuniones -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                        <h3 class="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">📞 Reuniones <span class="text-xs font-normal text-gray-400">(${snap.stats.doneMeetings}/${snap.stats.totalMeetings} realizadas)</span></h3>
+                        <div class="space-y-2">${mtgsHtml}</div>
+                    </div>
+                </div>
+            </div>`;
     };
 
     // ── Vistas ────────────────────────────────────────────────────────────────
-    const switchView = v => {
-        dom.dashboardView.classList.toggle('hidden', v!=='dashboard');
-        dom.allTasksView.classList.toggle('hidden', v!=='tasks');
-        dom.allMeetingsView.classList.toggle('hidden', v!=='meetings');
-        dom.combinedPlannerView.classList.toggle('hidden', v!=='combined');
-        [['showDashboardBtn','dashboard'],['showCombinedPlannerBtn','combined'],['showAllTasksBtn','tasks'],['showAllMeetingsBtn','meetings']].forEach(([b,n])=>{
-            dom[b].classList.toggle('text-blue-600', v===n);
-            dom[b].classList.toggle('border-blue-600', v===n);
-            dom[b].classList.toggle('border-b-2', v===n);
-            dom[b].classList.toggle('text-gray-500', v!==n);
+    const switchView=v=>{
+        ['dashboard','tasks','meetings','combined','history'].forEach(name=>{
+            const el=dom[name==='combined'?'combinedPlannerView':name==='tasks'?'allTasksView':name==='meetings'?'allMeetingsView':name==='history'?'historyView':'dashboardView'];
+            el.classList.toggle('hidden',v!==name);
         });
+        const btnMap={dashboard:'showDashboardBtn',combined:'showCombinedPlannerBtn',tasks:'showAllTasksBtn',meetings:'showAllMeetingsBtn',history:'showHistoryBtn'};
+        Object.entries(btnMap).forEach(([name,btn])=>{
+            dom[btn].classList.toggle('text-blue-600',v===name);
+            dom[btn].classList.toggle('border-blue-600',v===name);
+            dom[btn].classList.toggle('border-b-2',v===name);
+            dom[btn].classList.toggle('text-gray-500',v!==name);
+        });
+        if(v==='history'){ renderHistCalendar(); renderHistDaysList(); }
     };
+    const setMainView=v=>{currentView=v;dom.viewLaboralBtn.classList.toggle('active',v==='laboral');dom.viewPersonalBtn.classList.toggle('active',v==='personal');renderAll();};
+    const renderAll=()=>{renderMatrix();renderPlanner();renderCombinedPlanner();renderMeetingMonitor();populateModalSelects();renderFilters();renderAllTasksList();renderAllMeetingsList();};
 
-    const setMainView = v => { currentView=v; dom.viewLaboralBtn.classList.toggle('active',v==='laboral'); dom.viewPersonalBtn.classList.toggle('active',v==='personal'); renderAll(); };
-
-    const renderAll = () => { renderMatrix(); renderPlanner(); renderCombinedPlanner(); renderMeetingMonitor(); populateModalSelects(); renderFilters(); renderAllTasksList(); renderAllMeetingsList(); };
-
-    // ── Render Matrix ─────────────────────────────────────────────────────────
-    const getTaskCardHighlight = t => t.isDelegated ? 'bg-purple-100 border-purple-300' : '';
-    const renderMatrixTaskCard = task => {
-        let ind=''; const today=new Date(); today.setHours(0,0,0,0);
-        if(!task.isDelegated){
-            if(task.plannedDate){ const pd=new Date(task.plannedDate+'T00:00:00'); if(task.startTime&&task.endTime) ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>`; else if(pd<today&&task.progress<100) ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`; else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"></div>`; }
-            else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;
-        }
+    // ── Matriz ────────────────────────────────────────────────────────────────
+    const renderMatrixTaskCard=task=>{
+        let ind='';const today=new Date();today.setHours(0,0,0,0);
+        if(!task.isDelegated){if(task.plannedDate){const pd=new Date(task.plannedDate+'T00:00:00');if(task.startTime&&task.endTime)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>`;else if(pd<today&&task.progress<100)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"></div>`;}else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;}
         const over=task.dueDate&&new Date(task.dueDate+'T00:00:00')<today&&task.progress<100;
-        let hl='bg-white'; if(over) hl='bg-red-100 border-red-300'; else if(task.isDelegated) hl='bg-purple-100 border-purple-300';
-        return `<div class="task-card relative p-2 rounded-md shadow-sm border ${hl}" data-id="${task.id}">${ind}<p class="font-medium text-sm pr-4 truncate">${task.description}</p><p class="text-xs text-gray-500 mt-1">Vence: ${formatDateDisplay(task.dueDate)}</p></div>`;
+        let hl='bg-white';if(over)hl='bg-red-100 border-red-300';else if(task.isDelegated)hl='bg-purple-100 border-purple-300';
+        return`<div class="task-card relative p-2 rounded-md shadow-sm border ${hl}" data-id="${task.id}">${ind}<p class="font-medium text-sm pr-4 truncate">${task.description}</p><p class="text-xs text-gray-500 mt-1">Vence: ${formatDateDisplay(task.dueDate)}</p></div>`;
     };
-    const renderMatrix = () => {
+    const renderMatrix=()=>{
         ['q1Tasks','q2Tasks','q3Tasks','q4Tasks'].forEach(q=>dom[q].innerHTML='');
-        const today=new Date(); today.setHours(0,0,0,0); const f5=new Date(today); f5.setDate(today.getDate()+5);
-        tasks.filter(t=>{ if(t.progress===100||t.isRepetitive) return false; return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView; }).forEach(task=>{
-            const due=new Date(task.dueDate+'T00:00:00'); const soon=due<=f5; const html=renderMatrixTaskCard(task);
+        const today=new Date();today.setHours(0,0,0,0);const f5=new Date(today);f5.setDate(today.getDate()+5);
+        tasks.filter(t=>{if(t.progress===100||t.isRepetitive)return false;return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;}).forEach(task=>{
+            const due=new Date(task.dueDate+'T00:00:00'),soon=due<=f5,html=renderMatrixTaskCard(task);
             if(task.isUrgent&&task.isImportant)(soon?dom.q1Tasks:dom.q2Tasks).insertAdjacentHTML('beforeend',html);
-            else if(!task.isUrgent&&task.isImportant) dom.q2Tasks.insertAdjacentHTML('beforeend',html);
-            else if(task.isUrgent&&!task.isImportant) dom.q3Tasks.insertAdjacentHTML('beforeend',html);
+            else if(!task.isUrgent&&task.isImportant)dom.q2Tasks.insertAdjacentHTML('beforeend',html);
+            else if(task.isUrgent&&!task.isImportant)dom.q3Tasks.insertAdjacentHTML('beforeend',html);
             else dom.q4Tasks.insertAdjacentHTML('beforeend',html);
         });
     };
 
-    // ── Render Events ─────────────────────────────────────────────────────────
-    const calcLayout = evs => {
-        if(!evs.length) return; evs.sort((a,b)=>a.start-b.start||b.end-a.end);
-        let cols=[];
-        evs.forEach(ev=>{ let placed=false; for(let i=0;i<cols.length;i++){ if(cols[i].length>0&&cols[i][cols[i].length-1].end<=ev.start){ cols[i].push(ev); ev.layout={col:i}; placed=true; break; } } if(!placed){ cols.push([ev]); ev.layout={col:cols.length-1}; } });
-        const n=cols.length; evs.forEach(ev=>{ ev.layout.width=100/n; ev.layout.left=ev.layout.col*ev.layout.width; });
-    };
-    const renderEventLayout = (evs, sh, eh, hh, combined=false) => evs.map(ev=>{
-        const {start,end}=ev; const dur=end-start;
+    // ── Eventos layout ────────────────────────────────────────────────────────
+    const calcLayout=evs=>{if(!evs.length)return;evs.sort((a,b)=>a.start-b.start||b.end-a.end);let cols=[];evs.forEach(ev=>{let placed=false;for(let i=0;i<cols.length;i++){if(cols[i][cols[i].length-1].end<=ev.start){cols[i].push(ev);ev.layout={col:i};placed=true;break;}}if(!placed){cols.push([ev]);ev.layout={col:cols.length-1};}});const n=cols.length;evs.forEach(ev=>{ev.layout.width=100/n;ev.layout.left=ev.layout.col*ev.layout.width;});};
+    const renderEventLayout=(evs,sh,eh,hh,combined=false)=>evs.map(ev=>{
+        const{start,end}=ev,dur=end-start;
         if(start>=sh&&start<eh+1&&dur>0){
-            const top=(start-sh)*hh; const height=dur*hh; const l=ev.layout||{width:100,left:0};
+            const top=(start-sh)*hh,height=dur*hh,l=ev.layout||{width:100,left:0};
             if(ev.type==='task'){
                 const done=ev.progress===100;
-                let hl=done?'bg-green-100 border-green-300 text-gray-700':(getTaskCardHighlight(ev)||'bg-blue-100 border-blue-300 text-blue-900');
-                if(combined&&!done) hl=ev.taskType==='laboral'?'bg-blue-100 border-blue-300 text-blue-900':'bg-orange-100 border-orange-300 text-orange-900';
+                let hl=done?'bg-green-100 border-green-300 text-gray-700':combined?(ev.taskType==='laboral'?'bg-blue-100 border-blue-300 text-blue-900':'bg-orange-100 border-orange-300 text-orange-900'):(ev.isDelegated?'bg-purple-100 border-purple-300':'bg-blue-100 border-blue-300 text-blue-900');
                 const prHtml=done?`<span class="text-xs font-bold text-green-700">✔ COMPLETADA</span>`:`<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px]">${ev.progress}%</span></div>`;
                 const sm=dur<0.75;
-                const stip=ev.subtasks&&ev.subtasks.length>0?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60] subtask-tooltip"><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:'';
-                return `<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
-            } else {
+                const stip=ev.subtasks?.length>0?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60]"><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:'';
+                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
+            }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
-                return `<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
+                return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
             }
-        } return '';
+        }return'';
     }).join('');
+    const buildGroups=evs=>{if(!evs.length)return[];evs.sort((a,b)=>a.start-b.start);let groups=[],cur=[evs[0]],gEnd=evs[0].end;for(let i=1;i<evs.length;i++){if(evs[i].start<gEnd){cur.push(evs[i]);gEnd=Math.max(gEnd,evs[i].end);}else{groups.push(cur);cur=[evs[i]];gEnd=evs[i].end;}}groups.push(cur);return groups;};
 
-    const buildGroups = evs => {
-        if(!evs.length) return [];
-        evs.sort((a,b)=>a.start-b.start);
-        let groups=[], cur=[evs[0]], gEnd=evs[0].end;
-        for(let i=1;i<evs.length;i++){ if(evs[i].start<gEnd){ cur.push(evs[i]); gEnd=Math.max(gEnd,evs[i].end); } else { groups.push(cur); cur=[evs[i]]; gEnd=evs[i].end; } }
-        groups.push(cur); return groups;
+    // ── Checklist repetitivo ──────────────────────────────────────────────────
+    const renderRepetitiveChecklist=(dateStr,showAll=false)=>{
+        const rep=tasks.filter(t=>{if(!t.isRepetitive)return false;if(showAll)return true;return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;});
+        if(!rep.length)return'';
+        if(showAll)rep.sort((a,b)=>a.type==='personal'?1:-1);
+        return`<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-6"><h4 class="font-bold text-indigo-800 mb-2 text-xs uppercase tracking-wider">↺ Checklist Diario</h4><div class="space-y-1.5">${rep.map(t=>{const done=t.completedDates?.includes(dateStr);const ti=showAll?`<span class="text-[9px] font-bold ${t.type==='personal'?'text-orange-600':'text-blue-600'} mr-1.5">[${t.type==='personal'?'P':'L'}]</span>`:'';return`<div class="repetitive-item flex items-center p-2 bg-white rounded border border-indigo-100 shadow-sm"><input type="checkbox" data-id="${t.id}" data-date="${dateStr}" class="repetitive-cb h-4 w-4 text-indigo-600 rounded cursor-pointer" ${done?'checked':''}><span class="ml-2 text-[11px] font-medium flex-grow ${done?'line-through text-gray-400':'text-gray-700'}">${ti}${t.description}</span><button type="button" class="edit-repetitive-btn ml-2 text-gray-400 hover:text-indigo-600" data-id="${t.id}">✎</button></div>`;}).join('')}</div></div>`;
     };
 
-    // ── Repetitive checklist ──────────────────────────────────────────────────
-    const renderRepetitiveChecklist = (dateStr, showAll=false) => {
-        const rep=tasks.filter(t=>{ if(!t.isRepetitive) return false; if(showAll) return true; return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView; });
-        if(!rep.length) return '';
-        if(showAll) rep.sort((a,b)=>a.type==='personal'?1:-1);
-        return `<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-6"><h4 class="font-bold text-indigo-800 mb-2 text-xs uppercase tracking-wider">↺ Checklist Diario</h4><div class="space-y-1.5">${rep.map(task=>{ const done=task.completedDates&&task.completedDates.includes(dateStr); const ti=showAll?`<span class="text-[9px] font-bold ${task.type==='personal'?'text-orange-600':'text-blue-600'} mr-1.5">[${task.type==='personal'?'P':'L'}]</span>`:''; return `<div class="repetitive-item flex items-center p-2 bg-white rounded border border-indigo-100 shadow-sm"><input type="checkbox" data-id="${task.id}" data-date="${dateStr}" class="repetitive-cb h-4 w-4 text-indigo-600 rounded cursor-pointer" ${done?'checked':''}><span class="ml-2 text-[11px] font-medium flex-grow ${done?'line-through text-gray-400':'text-gray-700'}">${ti}${task.description}</span><button type="button" class="edit-repetitive-btn ml-2 text-gray-400 hover:text-indigo-600" data-id="${task.id}">✎</button></div>`; }).join('')}</div></div>`;
-    };
-
-    // ── Render Planner ────────────────────────────────────────────────────────
-    const buildTimeslots = (sh, eh, hh) => { let h=''; for(let i=sh;i<=eh;i++){ const lbl=i>12?`${i-12} PM`:(i===12?'12 PM':`${i} AM`); h+=`<div class="time-slot relative flex items-start" style="height:${hh}px;" data-time="${i<10?'0'+i:i}:00"><div class="text-right w-12 pr-2 text-sm text-gray-400 -mt-2">${lbl}</div><div class="flex-grow border-t border-gray-200"></div></div>`; } return h; };
-
-    const renderPlanner = () => {
-        const today=new Date(); today.setHours(0,0,0,0); const todayStr=today.toISOString().split('T')[0];
+    // ── Planner ───────────────────────────────────────────────────────────────
+    const buildTimeslots=(sh,eh,hh)=>{let h='';for(let i=sh;i<=eh;i++){const lbl=i>12?`${i-12} PM`:(i===12?'12 PM':`${i} AM`);h+=`<div class="time-slot relative flex items-start" style="height:${hh}px;" data-time="${i<10?'0'+i:i}:00"><div class="text-right w-12 pr-2 text-sm text-gray-400 -mt-2">${lbl}</div><div class="flex-grow border-t border-gray-200"></div></div>`;}return h;};
+    const renderPlanner=()=>{
+        const today=new Date();today.setHours(0,0,0,0);const todayStr=today.toISOString().split('T')[0];
         const todayName=today.toLocaleDateString('es-ES',{weekday:'long'});
-        const sh=6, eh=currentView==='laboral'?17:23, hh=40;
+        const sh=6,eh=currentView==='laboral'?17:23,hh=40;
         const mv=t=>currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;
         const todayTasks=tasks.filter(t=>t.plannedDate===todayStr&&!t.isDelegated&&!t.isRepetitive&&mv(t));
-        const sched=todayTasks.filter(t=>t.startTime&&t.endTime);
-        const unsched=todayTasks.filter(t=>!t.startTime||!t.endTime);
+        const sched=todayTasks.filter(t=>t.startTime&&t.endTime),unsched=todayTasks.filter(t=>!t.startTime||!t.endTime);
         const todayMtgs=meetings.filter(m=>m.date===todayStr&&mv(m));
-        const evs=[...sched.map(t=>({...t,type:'task',title:t.description})),...todayMtgs.map(m=>({...m,type:'meeting'}))].map(e=>({...e,start:parseTime(e.startTime),end:parseTime(e.endTime)}));
+        const evs=[...sched.map(t=>({...t,type:'task'})),...todayMtgs.map(m=>({...m,type:'meeting'}))].map(e=>({...e,start:parseTime(e.startTime),end:parseTime(e.endTime)}));
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días</h3><div class="space-y-4">`;
-        let cnt=0, cd=new Date(today);
-        while(cnt<3){ cd.setDate(cd.getDate()+1); if(cd.getDay()!==0&&cd.getDay()!==6){ cnt++; const ds=cd.toISOString().split('T')[0]; const dn=cd.toLocaleDateString('es-ES',{weekday:'long'}); const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t)); upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`; } }
+        let cnt=0,cd=new Date(today);
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`;}}
         upHtml+=`</div>`;
         dom.plannerSection.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh)}</div></div><div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar</h4><div class="flex flex-wrap gap-2">${unsched.length>0?unsched.map(t=>`<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join(''):'<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div></div><div>${renderRepetitiveChecklist(todayStr,false)}${upHtml}</div></div>`;
         updatePlannerClock();
     };
-
-    const renderCombinedPlanner = () => {
-        const today=new Date(); today.setHours(0,0,0,0); const todayStr=today.toISOString().split('T')[0];
+    const renderCombinedPlanner=()=>{
+        const today=new Date();today.setHours(0,0,0,0);const todayStr=today.toISOString().split('T')[0];
         const todayName=today.toLocaleDateString('es-ES',{weekday:'long'});
-        const sh=6, eh=23, hh=40;
+        const sh=6,eh=23,hh=40;
         const evs=[...tasks.filter(t=>t.plannedDate===todayStr&&!t.isDelegated&&t.startTime&&t.endTime&&!t.isRepetitive).map(t=>({...t,type:'task',taskType:t.type||'laboral'})),...meetings.filter(m=>m.date===todayStr).map(m=>({...m,type:'meeting'}))].map(e=>({...e,start:parseTime(e.startTime),end:parseTime(e.endTime)}));
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días (Total)</h3><div class="space-y-4">`;
-        let cnt=0, cd=new Date(today);
-        while(cnt<3){ cd.setDate(cd.getDate()+1); if(cd.getDay()!==0&&cd.getDay()!==6){ cnt++; const ds=cd.toISOString().split('T')[0]; const dn=cd.toLocaleDateString('es-ES',{weekday:'long'}); const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive); upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200'; return `<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`; } }
+        let cnt=0,cd=new Date(today);
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}</div>`;}}
         upHtml+=`</div>`;
         dom.combinedPlannerContainer.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh,true)}</div></div></div><div>${renderRepetitiveChecklist(todayStr,true)}${upHtml}</div></div>`;
         updatePlannerClock();
     };
-
-    const renderMeetingMonitor = () => {
-        const today=new Date(); today.setHours(0,0,0,0); const tom=new Date(today); tom.setDate(today.getDate()+1);
-        const tStr=today.toISOString().split('T')[0]; const tmStr=tom.toISOString().split('T')[0];
+    const renderMeetingMonitor=()=>{
+        const today=new Date();today.setHours(0,0,0,0);
+        const tStr=today.toISOString().split('T')[0],tmStr=new Date(today.getTime()+864e5).toISOString().split('T')[0];
         const mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
-        const mkList=(title,ds)=>{ const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime)); if(!ms.length) return `<h3 class="text-lg font-bold mb-2">${title}</h3><p class="text-sm text-gray-500">No hay reuniones.</p>`; return `<h3 class="text-lg font-bold mb-2">${title}</h3><div class="space-y-3">${ms.map(m=>`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-40 text-center"><p class="font-bold text-indigo-600 ${m.completed?'line-through text-gray-500':''}">${m.startTime}${m.endTime?' - '+m.endTime:''}</p></div><div class="border-l-2 border-indigo-500 pl-4 ml-4 flex-grow"><p class="font-medium ${m.completed?'line-through text-gray-500':''}">${m.title}</p></div><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-4 text-blue-600 rounded" ${m.completed?'checked':''}></div>`).join('')}</div>`; };
+        const mkList=(title,ds)=>{const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));if(!ms.length)return`<h3 class="text-lg font-bold mb-2">${title}</h3><p class="text-sm text-gray-500">No hay reuniones.</p>`;return`<h3 class="text-lg font-bold mb-2">${title}</h3><div class="space-y-3">${ms.map(m=>`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-40 text-center"><p class="font-bold text-indigo-600 ${m.completed?'line-through text-gray-500':''}">${m.startTime}${m.endTime?' - '+m.endTime:''}</p></div><div class="border-l-2 border-indigo-500 pl-4 ml-4 flex-grow"><p class="font-medium ${m.completed?'line-through text-gray-500':''}">${m.title}</p></div><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-4 text-blue-600 rounded" ${m.completed?'checked':''}></div>`).join('')}</div>`;};
         dom.meetingsList.innerHTML=mkList('Reuniones de Hoy',tStr)+`<div class="mt-6">${mkList('Reuniones de Mañana',tmStr)}</div>`;
     };
 
-    // ── All Tasks ─────────────────────────────────────────────────────────────
-    const getHL = task => {
-        if(task.progress===100) return 'bg-green-100 border-green-300';
-        if(task.isDelegated) return 'bg-purple-100 border-purple-300';
-        const today=new Date(); today.setHours(0,0,0,0);
-        if(task.dueDate&&new Date(task.dueDate+'T00:00:00')<today&&task.progress<100) return 'bg-red-100 border-red-300';
-        const tom=new Date(today); tom.setDate(today.getDate()+1);
-        if(task.dueDate&&new Date(task.dueDate+'T00:00:00')<=tom&&task.progress<100) return 'bg-yellow-100 border-yellow-300';
-        if(!task.plannedDate) return 'bg-orange-100 border-orange-300';
-        return 'bg-gray-50 border-gray-200';
-    };
-    const getFiltered = () => tasks.filter(t=>{ const mv=currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView; return mv&&!t.isRepetitive&&(filters.importance==='all'||t.isImportant===(filters.importance==='true'))&&(filters.urgency==='all'||t.isUrgent===(filters.urgency==='true'))&&(filters.responsible==='all'||t.responsible===filters.responsible)&&(!filters.tag||(t.tags&&t.tags.includes(filters.tag)))&&(filters.dateRange.length!==2||(new Date(t.dueDate)>=filters.dateRange[0]&&new Date(t.dueDate)<=filters.dateRange[1])); });
-
-    const renderAllTasksList = () => {
-        const f=getFiltered(); const pending=f.filter(t=>t.progress<100);
-        dom.allTasksList.innerHTML=pending.length>0?pending.map(task=>{ const sd=task.subtasks?.filter(s=>s.isCompleted).length||0; const ss=task.subtasks?.length>0?`(${sd}/${task.subtasks.length})`:''; const ah=!task.plannedDate&&!task.isDelegated?`<div class="mt-2"><button class="assign-date-btn w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded" data-id="${task.id}">Asignar Día</button></div>`:task.isDelegated?`<p class="text-sm text-purple-700 mt-2 font-medium">Tarea Delegada</p>`:`<p class="text-sm text-green-700 mt-2 font-medium">Planificada: ${formatDateDisplay(task.plannedDate)}</p>`; return `<div class="task-card flex flex-col md:flex-row p-4 rounded-lg border ${getHL(task)}" data-id="${task.id}"><div class="flex-grow mb-4 md:mb-0 md:mr-4"><p class="font-bold text-lg">${task.description} <span class="font-normal text-gray-500">${ss}</span></p><p class="text-sm text-gray-600">Resp: ${task.responsible||'N/A'}</p><p class="text-sm text-gray-500">Vence: ${formatDateDisplay(task.dueDate)} | ${task.taskSize||'N/A'}</p></div><div class="w-full md:w-56 space-y-2"><div class="flex items-center gap-2"><input type="range" min="0" max="100" value="${task.progress}" class="w-full h-2 bg-gray-300 rounded-lg progress-slider" data-id="${task.id}"><span class="text-sm font-medium w-10 text-right">${task.progress}%</span></div>${ah}</div></div>`; }).join(''):'<p class="text-center text-gray-500">No hay tareas pendientes.</p>';
-        let comp=f.filter(t=>t.progress===100); const sr=filters.completedTaskSearch.toLowerCase().trim(); const dr=filters.historyTaskDateRange;
-        if(sr) comp=comp.filter(t=>t.description.toLowerCase().includes(sr));
-        if(dr.length===2) comp=comp.filter(t=>{ const d=new Date(t.dueDate+'T00:00:00'); return d>=dr[0]&&d<=dr[1]; });
+    // ── All Tasks / Meetings ──────────────────────────────────────────────────
+    const getHL=task=>{if(task.progress===100)return'bg-green-100 border-green-300';if(task.isDelegated)return'bg-purple-100 border-purple-300';const today=new Date();today.setHours(0,0,0,0);if(task.dueDate&&new Date(task.dueDate+'T00:00:00')<today&&task.progress<100)return'bg-red-100 border-red-300';const tom=new Date(today);tom.setDate(today.getDate()+1);if(task.dueDate&&new Date(task.dueDate+'T00:00:00')<=tom&&task.progress<100)return'bg-yellow-100 border-yellow-300';if(!task.plannedDate)return'bg-orange-100 border-orange-300';return'bg-gray-50 border-gray-200';};
+    const getFiltered=()=>tasks.filter(t=>{const mv=currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;return mv&&!t.isRepetitive&&(filters.importance==='all'||t.isImportant===(filters.importance==='true'))&&(filters.urgency==='all'||t.isUrgent===(filters.urgency==='true'))&&(filters.responsible==='all'||t.responsible===filters.responsible)&&(!filters.tag||(t.tags?.includes(filters.tag)))&&(filters.dateRange.length!==2||(new Date(t.dueDate)>=filters.dateRange[0]&&new Date(t.dueDate)<=filters.dateRange[1]));});
+    const renderAllTasksList=()=>{
+        const f=getFiltered(),pending=f.filter(t=>t.progress<100);
+        dom.allTasksList.innerHTML=pending.length>0?pending.map(t=>{const sd=t.subtasks?.filter(s=>s.isCompleted).length||0;const ss=t.subtasks?.length>0?`(${sd}/${t.subtasks.length})`:'';const ah=!t.plannedDate&&!t.isDelegated?`<div class="mt-2"><button class="assign-date-btn w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded" data-id="${t.id}">Asignar Día</button></div>`:t.isDelegated?`<p class="text-sm text-purple-700 mt-2 font-medium">Tarea Delegada</p>`:`<p class="text-sm text-green-700 mt-2 font-medium">Planificada: ${formatDateDisplay(t.plannedDate)}</p>`;return`<div class="task-card flex flex-col md:flex-row p-4 rounded-lg border ${getHL(t)}" data-id="${t.id}"><div class="flex-grow mb-4 md:mb-0 md:mr-4"><p class="font-bold text-lg">${t.description} <span class="font-normal text-gray-500">${ss}</span></p><p class="text-sm text-gray-600">Resp: ${t.responsible||'N/A'}</p><p class="text-sm text-gray-500">Vence: ${formatDateDisplay(t.dueDate)} | ${t.taskSize||'N/A'}</p></div><div class="w-full md:w-56 space-y-2"><div class="flex items-center gap-2"><input type="range" min="0" max="100" value="${t.progress}" class="w-full h-2 bg-gray-300 rounded-lg progress-slider" data-id="${t.id}"><span class="text-sm font-medium w-10 text-right">${t.progress}%</span></div>${ah}</div></div>`;}).join(''):'<p class="text-center text-gray-500">No hay tareas pendientes.</p>';
+        let comp=f.filter(t=>t.progress===100);const sr=filters.completedTaskSearch.toLowerCase().trim(),dr=filters.historyTaskDateRange;
+        if(sr)comp=comp.filter(t=>t.description.toLowerCase().includes(sr));
+        if(dr.length===2)comp=comp.filter(t=>{const d=new Date(t.dueDate+'T00:00:00');return d>=dr[0]&&d<=dr[1];});
         comp.sort((a,b)=>new Date(b.dueDate)-new Date(a.dueDate));
         const tot=comp.length;
-        if(!filters.showAllCompletedTasks&&!sr&&dr.length===0){ comp=comp.slice(0,5); dom.toggleAllCompletedTasks.textContent=`Ver Todo (${tot})`; } else { dom.toggleAllCompletedTasks.textContent="Ver Recientes"; }
+        if(!filters.showAllCompletedTasks&&!sr&&dr.length===0){comp=comp.slice(0,5);dom.toggleAllCompletedTasks.textContent=`Ver Todo (${tot})`;}else dom.toggleAllCompletedTasks.textContent="Ver Recientes";
         dom.completedTasksList.innerHTML=comp.length>0?comp.map(t=>`<div class="task-card p-3 rounded-lg border bg-green-100 border-green-300" data-id="${t.id}"><p class="font-bold line-through text-gray-600">${t.description}</p><p class="text-xs text-gray-500">Resp: ${t.responsible||'N/A'} | Vencía: ${formatDateDisplay(t.dueDate)}</p></div>`).join(''):`<p class="text-center text-gray-400 text-sm py-4">No hay historial.</p>`;
     };
-
-    const renderAllMeetingsList = () => {
-        const dr=filterMeetingDatepicker.selectedDates; const mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
-        const f=meetings.filter(m=>{ if(!mv(m)) return false; if(dr.length>0){ const md=new Date(m.date+'T00:00:00'); if(dr.length===1) return md.getTime()===dr[0].getTime(); if(dr.length===2) return md>=dr[0]&&md<=dr[1]; } return true; }).sort((a,b)=>new Date(a.date)-new Date(b.date)||a.startTime.localeCompare(b.startTime));
+    const renderAllMeetingsList=()=>{
+        const dr=filterMtgDP.selectedDates,mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
+        const f=meetings.filter(m=>{if(!mv(m))return false;if(dr.length>0){const md=new Date(m.date+'T00:00:00');if(dr.length===1)return md.getTime()===dr[0].getTime();if(dr.length===2)return md>=dr[0]&&md<=dr[1];}return true;}).sort((a,b)=>new Date(a.date)-new Date(b.date)||a.startTime.localeCompare(b.startTime));
         const pend=f.filter(m=>!m.completed);
         dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${m.startTime||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
-        let comp=meetings.filter(m=>m.completed&&mv(m)); const sr=filters.completedMeetingSearch.toLowerCase().trim(); const hdr=filters.historyMeetingDateRange;
-        if(sr) comp=comp.filter(m=>m.title.toLowerCase().includes(sr));
-        if(hdr.length===2) comp=comp.filter(m=>{ const d=new Date(m.date+'T00:00:00'); return d>=hdr[0]&&d<=hdr[1]; });
+        let comp=meetings.filter(m=>m.completed&&mv(m));const sr=filters.completedMeetingSearch.toLowerCase().trim(),hdr=filters.historyMeetingDateRange;
+        if(sr)comp=comp.filter(m=>m.title.toLowerCase().includes(sr));
+        if(hdr.length===2)comp=comp.filter(m=>{const d=new Date(m.date+'T00:00:00');return d>=hdr[0]&&d<=hdr[1];});
         comp.sort((a,b)=>new Date(b.date)-new Date(a.date));
         const tot=comp.length;
-        if(!filters.showAllCompletedMeetings&&!sr&&hdr.length===0){ comp=comp.slice(0,5); dom.toggleAllCompletedMeetings.textContent=`Ver Todo (${tot})`; } else { dom.toggleAllCompletedMeetings.textContent="Ver Recientes"; }
+        if(!filters.showAllCompletedMeetings&&!sr&&hdr.length===0){comp=comp.slice(0,5);dom.toggleAllCompletedMeetings.textContent=`Ver Todo (${tot})`;}else dom.toggleAllCompletedMeetings.textContent="Ver Recientes";
         dom.completedMeetingsList.innerHTML=comp.length>0?comp.map(m=>`<div class="meeting-card-full p-3 rounded-lg border bg-green-50 border-green-200"><p class="font-bold line-through text-gray-600">${m.title}</p><p class="text-xs text-gray-500">${formatDateDisplay(m.date)} | Realizada</p></div>`).join(''):`<p class="text-center text-gray-400 text-sm py-4">Sin historial.</p>`;
     };
-
-    const populateModalSelects = () => {
-        const resp=allResponsibles[currentView]||[];
-        dom.responsibleSelect.innerHTML='<option value="">-- Sin Asignar --</option>'+resp.map(r=>`<option value="${r}">${r}</option>`).join('');
-        dom.tagsSelect.innerHTML=(allTags[currentView]||[]).map(t=>`<option value="${t}">${t}</option>`).join('');
-    };
-    const renderFilters = () => {
+    const populateModalSelects=()=>{const resp=allResponsibles[currentView]||[];dom.responsibleSelect.innerHTML='<option value="">-- Sin Asignar --</option>'+resp.map(r=>`<option value="${r}">${r}</option>`).join('');dom.tagsSelect.innerHTML=(allTags[currentView]||[]).map(t=>`<option value="${t}">${t}</option>`).join('');};
+    const renderFilters=()=>{
         dom.filterImportance.innerHTML=Object.entries({all:'Todas',true:'Importante',false:'No Importante'}).map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
         dom.filterUrgency.innerHTML=Object.entries({all:'Todas',true:'Urgente',false:'No Urgente'}).map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
         dom.taskForm.importance.innerHTML=`<option value="true">Importante</option><option value="false">No Importante</option>`;
@@ -765,84 +845,83 @@ document.addEventListener('DOMContentLoaded', () => {
         const tags=allTags[currentView]||[];
         dom.filterTagsContainer.innerHTML=`<span class="tag-filter ${!filters.tag?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="all">Todas</span>`+tags.map(t=>`<span class="tag-filter ${filters.tag===t?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="${t}">${t}</span>`).join('');
     };
-    const renderSubtasksInModal = () => { dom.subtasksList.innerHTML=currentSubtasks.map(st=>`<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted?'checked':''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted?'line-through text-gray-500':''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible||'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join(''); };
+    const renderSubtasksInModal=()=>{dom.subtasksList.innerHTML=currentSubtasks.map(st=>`<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted?'checked':''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted?'line-through text-gray-500':''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible||'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join('');};
 
-    // ── Modal Tarea ───────────────────────────────────────────────────────────
-    const openTaskModal  = () => { dom.taskModal.classList.remove('hidden'); setTimeout(()=>{ dom.taskModal.classList.remove('opacity-0'); dom.modalContent.classList.remove('scale-95'); },10); };
-    const closeTaskModal = () => { dom.taskModal.classList.add('opacity-0'); dom.modalContent.classList.add('scale-95'); setTimeout(()=>{ dom.taskModal.classList.add('hidden'); dom.taskForm.reset(); currentSubtasks=[]; dom.deleteTaskBtn.classList.add('hidden'); dom.taskForm.taskId.value=''; dueDatepicker.clear(); plannedDatepicker.clear(); startTimepicker.clear(); endTimepicker.clear(); dom.timeContainerModal.classList.add('hidden'); dom.progressContainerModal.classList.remove('hidden'); dom.dateControlsContainer.classList.remove('hidden'); dom.delegatedContainer.classList.remove('hidden'); },300); };
-
-    const openEditTaskModal = (task, initialTime=null) => {
-        dom.taskForm.reset(); populateModalSelects();
-        const isRep=!!task.isRepetitive; dom.isRepetitiveCheckbox.checked=isRep;
-        if(task&&task.id){
-            dom.modalTitle.innerText='Editar Tarea'; dom.taskForm.taskId.value=task.id; dom.taskForm.taskType.value=task.type||'laboral'; dom.taskForm.description.value=task.description; dom.taskForm.taskSize.value=task.taskSize||'Mediana'; dom.taskForm.importance.value=task.isImportant; dom.taskForm.urgency.value=task.isUrgent; dom.taskForm.isDelegated.checked=task.isDelegated; dom.taskForm.progress.value=task.progress||0; dom.progressLabel.textContent=`${task.progress||0}%`;
-            if(task.dueDate) dueDatepicker.setDate(task.dueDate);
-            if(task.plannedDate){ plannedDatepicker.setDate(task.plannedDate); dom.timeContainerModal.classList.remove('hidden'); if(task.startTime) startTimepicker.setDate(task.startTime); if(task.endTime) endTimepicker.setDate(task.endTime); } else dom.timeContainerModal.classList.add('hidden');
-            dom.responsibleSelect.value=task.responsible||''; Array.from(dom.tagsSelect.options).forEach(o=>{ o.selected=task.tags&&task.tags.includes(o.value); }); currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[])); dom.deleteTaskBtn.classList.remove('hidden');
-        } else {
-            dom.modalTitle.innerText='Nueva Tarea'; dom.taskForm.taskId.value=''; dom.taskForm.taskType.value=currentView; currentSubtasks=[]; dom.taskForm.importance.value='true'; dom.taskForm.urgency.value='false'; dom.deleteTaskBtn.classList.add('hidden');
-            if(initialTime){ const ts=new Date().toISOString().split('T')[0]; dueDatepicker.setDate(ts); plannedDatepicker.setDate(ts); startTimepicker.setDate(initialTime); const [h,m]=initialTime.split(':').map(Number); const eh=h+1; endTimepicker.setDate(`${eh<10?'0'+eh:eh}:${m<10?'0'+m:m}`); dom.timeContainerModal.classList.remove('hidden'); }
+    // ── Modales ───────────────────────────────────────────────────────────────
+    const openModal=(el,mc)=>{el.classList.remove('hidden');setTimeout(()=>{el.classList.remove('opacity-0');mc?.classList.remove('scale-95');},10);};
+    const closeModal=(el,mc,cb)=>{el.classList.add('opacity-0');mc?.classList.add('scale-95');setTimeout(()=>{el.classList.add('hidden');cb?.();},300);};
+    const openTaskModal=()=>openModal(dom.taskModal,dom.modalContent);
+    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
+    const openEditTaskModal=(task,initialTime=null)=>{
+        dom.taskForm.reset();populateModalSelects();
+        const isRep=!!task.isRepetitive;dom.isRepetitiveCheckbox.checked=isRep;
+        if(task?.id){
+            dom.modalTitle.innerText='Editar Tarea';dom.taskForm.taskId.value=task.id;dom.taskForm.taskType.value=task.type||'laboral';dom.taskForm.description.value=task.description;dom.taskForm.taskSize.value=task.taskSize||'Mediana';dom.taskForm.importance.value=task.isImportant;dom.taskForm.urgency.value=task.isUrgent;dom.taskForm.isDelegated.checked=task.isDelegated;dom.taskForm.progress.value=task.progress||0;dom.progressLabel.textContent=`${task.progress||0}%`;
+            if(task.dueDate)dueDatepicker.setDate(task.dueDate);
+            if(task.plannedDate){plannedDatepicker.setDate(task.plannedDate);dom.timeContainerModal.classList.remove('hidden');if(task.startTime)startTP.setDate(task.startTime);if(task.endTime)endTP.setDate(task.endTime);}else dom.timeContainerModal.classList.add('hidden');
+            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));dom.deleteTaskBtn.classList.remove('hidden');
+        }else{
+            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
+            if(initialTime){const ts=new Date().toISOString().split('T')[0];dueDatepicker.setDate(ts);plannedDatepicker.setDate(ts);startTP.setDate(initialTime);const[h,m]=initialTime.split(':').map(Number),eh=h+1;endTP.setDate(`${eh<10?'0'+eh:eh}:${m<10?'0'+m:m}`);dom.timeContainerModal.classList.remove('hidden');}
         }
-        dom.dateControlsContainer.classList.toggle('hidden',isRep); dom.delegatedContainer.classList.toggle('hidden',isRep); dom.progressContainerModal.classList.toggle('hidden',isRep);
+        dom.dateControlsContainer.classList.toggle('hidden',isRep);dom.delegatedContainer.classList.toggle('hidden',isRep);dom.progressContainerModal.classList.toggle('hidden',isRep);
         dom.plannedDateContainer.style.display=(dom.taskForm.isDelegated.checked||isRep)?'none':'block';
-        renderSubtasksInModal(); openTaskModal();
+        renderSubtasksInModal();openTaskModal();
     };
-
-    const saveTask = e => {
-        e.preventDefault(); const id=dom.taskForm.taskId.value; const selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value); const isRep=dom.isRepetitiveCheckbox.checked;
-        const td={ type:dom.taskForm.taskType.value, description:dom.taskForm.description.value, taskSize:dom.taskForm.taskSize.value, responsible:dom.responsibleSelect.value||null, isImportant:dom.taskForm.importance.value==='true', isUrgent:dom.taskForm.urgency.value==='true', dueDate:isRep?null:dom.taskForm.dueDate.value, tags:selTags, isDelegated:isRep?false:dom.taskForm.isDelegated.checked, isRepetitive:isRep, plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null, startTime:dom.taskForm.startTime.value||null, endTime:dom.taskForm.endTime.value||null, subtasks:[...currentSubtasks] };
-        if(id) td.progress=parseInt(dom.taskForm.progress.value,10);
-        const ex=id?tasks.find(t=>t.id===id):{};
-        const fin={...ex,...td};
-        if(!id){ fin.id=Date.now().toString(); fin.progress=0; fin.completedDates=[]; }
-        if(id) tasks[tasks.findIndex(t=>t.id===id)]=fin; else tasks.push(fin);
-        saveData(); renderAll(); closeTaskModal();
+    const saveTask=e=>{
+        e.preventDefault();const id=dom.taskForm.taskId.value,selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value),isRep=dom.isRepetitiveCheckbox.checked;
+        const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks]};
+        if(id)td.progress=parseInt(dom.taskForm.progress.value,10);
+        const fin={...(id?tasks.find(t=>t.id===id):{}),...td};
+        if(!id){fin.id=Date.now().toString();fin.progress=0;fin.completedDates=[];}
+        if(id)tasks[tasks.findIndex(t=>t.id===id)]=fin;else tasks.push(fin);
+        saveData();renderAll();closeTaskModal();
     };
+    const openMeetingModal=()=>openModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'));
+    const closeMeetingModal=()=>closeModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'),()=>{dom.meetingForm.reset();dom.meetingForm.meetingId.value='';dom.deleteMeetingBtn.classList.add('hidden');meetingDatepicker.clear();mtgStartTP.clear();mtgEndTP.clear();});
+    const openEditMeetingModal=m=>{dom.meetingForm.reset();if(m?.id){dom.meetingModalTitle.innerText='Editar Reunión';dom.meetingForm.meetingId.value=m.id;dom.meetingForm.meetingType.value=m.type||'laboral';dom.meetingForm.meetingTitle.value=m.title;meetingDatepicker.setDate(m.date);if(m.startTime){mtgStartTP.setDate(m.startTime);mtgEndTP.setDate(m.endTime);}dom.deleteMeetingBtn.classList.remove('hidden');}else{dom.meetingModalTitle.innerText='Nueva Reunión';dom.meetingForm.meetingId.value='';dom.meetingForm.meetingType.value=currentView;dom.deleteMeetingBtn.classList.add('hidden');}openMeetingModal();};
+    const saveMeeting=e=>{e.preventDefault();const id=dom.meetingForm.meetingId.value,st=dom.meetingForm.meetingStartTime.value,et=dom.meetingForm.meetingEndTime.value;if(st&&et&&parseTime(et)<=parseTime(st)){alert('La hora de fin debe ser posterior.');return;}const md={type:dom.meetingForm.meetingType.value,title:dom.meetingForm.meetingTitle.value,date:dom.meetingForm.meetingDate.value,startTime:st,endTime:et};if(id)meetings[meetings.findIndex(m=>m.id===id)]={...meetings.find(m=>m.id===id),...md};else meetings.push({id:Date.now().toString(),completed:false,...md});saveData();renderAll();closeMeetingModal();};
+    const openScheduleModal=tid=>{const task=tasks.find(t=>t.id===tid);if(!task)return;dom.scheduleForm.scheduleTaskId.value=tid;dom.scheduleTaskDescription.textContent=task.description;schStartTP.clear();schEndTP.clear();openModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'));};
+    const closeScheduleModal=()=>closeModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'),()=>dom.scheduleForm.reset());
+    const saveScheduleTime=e=>{e.preventDefault();const tid=dom.scheduleForm.scheduleTaskId.value,task=tasks.find(t=>t.id===tid),st=dom.scheduleForm.scheduleStartTime.value,et=dom.scheduleForm.scheduleEndTime.value;if(task&&st&&et&&parseTime(et)>parseTime(st)){task.startTime=st;task.endTime=et;saveData();renderAll();closeScheduleModal();}else alert('La hora de fin debe ser posterior.');};
 
-    // ── Modal Reunión ─────────────────────────────────────────────────────────
-    const openMeetingModal  = () => { dom.meetingModal.classList.remove('hidden'); setTimeout(()=>{ dom.meetingModal.classList.remove('opacity-0'); dom.meetingModal.querySelector('.modal-content').classList.remove('scale-95'); },10); };
-    const closeMeetingModal = () => { dom.meetingModal.classList.add('opacity-0'); dom.meetingModal.querySelector('.modal-content').classList.add('scale-95'); setTimeout(()=>{ dom.meetingModal.classList.add('hidden'); dom.meetingForm.reset(); dom.meetingForm.meetingId.value=''; dom.deleteMeetingBtn.classList.add('hidden'); meetingDatepicker.clear(); meetingStartTimePicker.clear(); meetingEndTimePicker.clear(); },300); };
-    const openEditMeetingModal = m => { dom.meetingForm.reset(); if(m&&m.id){ dom.meetingModalTitle.innerText='Editar Reunión'; dom.meetingForm.meetingId.value=m.id; dom.meetingForm.meetingType.value=m.type||'laboral'; dom.meetingForm.meetingTitle.value=m.title; meetingDatepicker.setDate(m.date); if(m.startTime){ meetingStartTimePicker.setDate(m.startTime); meetingEndTimePicker.setDate(m.endTime); } dom.deleteMeetingBtn.classList.remove('hidden'); } else { dom.meetingModalTitle.innerText='Nueva Reunión'; dom.meetingForm.meetingId.value=''; dom.meetingForm.meetingType.value=currentView; dom.deleteMeetingBtn.classList.add('hidden'); } openMeetingModal(); };
-    const saveMeeting = e => { e.preventDefault(); const id=dom.meetingForm.meetingId.value; const st=dom.meetingForm.meetingStartTime.value; const et=dom.meetingForm.meetingEndTime.value; if(st&&et&&parseTime(et)<=parseTime(st)){ alert('La hora de fin debe ser posterior.'); return; } const md={type:dom.meetingForm.meetingType.value,title:dom.meetingForm.meetingTitle.value,date:dom.meetingForm.meetingDate.value,startTime:st,endTime:et}; if(id) meetings[meetings.findIndex(m=>m.id===id)]={...meetings.find(m=>m.id===id),...md}; else meetings.push({id:Date.now().toString(),completed:false,...md}); saveData(); renderAll(); closeMeetingModal(); };
+    // ── Notificaciones / Timer ────────────────────────────────────────────────
+    const playBeep=()=>{try{const ctx=new(window.AudioContext||window.webkitAudioContext)(),now=ctx.currentTime;[0,.2,.4].forEach((t,i)=>{const o=ctx.createOscillator();o.type='sine';o.frequency.value=i===2?1000:880;o.connect(ctx.destination);o.start(now+t);o.stop(now+t+.1);});}catch(e){}};
+    const showNotification=msg=>{dom.notificationMessage.textContent=msg;dom.notificationToast.classList.remove('opacity-0','translate-y-10');playBeep();setTimeout(()=>dom.notificationToast.classList.add('opacity-0','translate-y-10'),5000);};
+    const checkAllAlerts=()=>{const now=new Date(),ts=now.toISOString().split('T')[0];const chk=(item,type)=>{if(!item.startTime)return;const[h,m]=item.startTime.split(':').map(Number),t=new Date();t.setHours(h,m,0,0);const diff=Math.round((t-now)/60000);const title=type==='meeting'?item.title:item.description;if(diff===15&&!firedAlerts.has(`${type}-${item.id}-15`)){showNotification(`AVISO (15 min): ${title}`);firedAlerts.add(`${type}-${item.id}-15`);}if(diff===0&&!firedAlerts.has(`${type}-${item.id}-0`)){showNotification(`¡AHORA!: ${title}`);firedAlerts.add(`${type}-${item.id}-0`);}};meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting'));tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>chk(t,'task'));};
+    const updateTimerDisplay=()=>{dom.timerDisplay.textContent=`${Math.floor(timeRemaining/60).toString().padStart(2,'0')}:${(timeRemaining%60).toString().padStart(2,'0')}`;};
+    const switchTimerMode=mode=>{timerMode=mode;resetTimer();document.querySelectorAll('.timer-btn').forEach(b=>b.classList.remove('active'));dom[mode+'ModeBtn'].classList.add('active');};
+    const startPauseTimer=()=>{isTimerRunning=!isTimerRunning;dom.startPauseTimerBtn.textContent=isTimerRunning?'PAUSAR':'INICIAR';if(isTimerRunning){timerEndTime=Date.now()+timeRemaining*1000;timerIntervalId=setInterval(()=>{timeRemaining=Math.max(0,Math.round((timerEndTime-Date.now())/1000));updateTimerDisplay();if(timeRemaining<=0){clearInterval(timerIntervalId);isTimerRunning=false;dom.startPauseTimerBtn.textContent='INICIAR';playBeep();showNotification('¡Tiempo terminado!');}},1000);}else clearInterval(timerIntervalId);};
+    const resetTimer=()=>{clearInterval(timerIntervalId);isTimerRunning=false;timeRemaining=TIMER_MODES[timerMode];dom.startPauseTimerBtn.textContent='INICIAR';updateTimerDisplay();};
+    const exportTasksToPDF=()=>{const{jsPDF}=window.jspdf;const pdfDoc=new jsPDF();const f=getFiltered();if(!f.length){alert('No hay tareas para exportar.');return;}pdfDoc.text("Reporte de Tareas",14,16);pdfDoc.autoTable({startY:22,head:[['Descripción','Responsable','Vence','Progreso']],body:f.map(t=>[t.description,t.responsible||'N/A',formatDateDisplay(t.dueDate),t.progress+'%']),theme:'striped',headStyles:{fillColor:[41,128,185]}});pdfDoc.save(`reporte-${new Date().toISOString().split('T')[0]}.pdf`);};
 
-    // ── Modal Agendar ─────────────────────────────────────────────────────────
-    const openScheduleModal = tid => { const task=tasks.find(t=>t.id===tid); if(!task) return; dom.scheduleForm.scheduleTaskId.value=tid; dom.scheduleTaskDescription.textContent=task.description; scheduleStartTimePicker.clear(); scheduleEndTimePicker.clear(); dom.scheduleModal.classList.remove('hidden'); setTimeout(()=>{ dom.scheduleModal.classList.remove('opacity-0'); dom.scheduleModal.querySelector('.modal-content').classList.remove('scale-95'); },10); };
-    const closeScheduleModal= () => { dom.scheduleModal.classList.add('opacity-0'); dom.scheduleModal.querySelector('.modal-content').classList.add('scale-95'); setTimeout(()=>{ dom.scheduleModal.classList.add('hidden'); dom.scheduleForm.reset(); },300); };
-    const saveScheduleTime  = e => { e.preventDefault(); const tid=dom.scheduleForm.scheduleTaskId.value; const task=tasks.find(t=>t.id===tid); const st=dom.scheduleForm.scheduleStartTime.value; const et=dom.scheduleForm.scheduleEndTime.value; if(task&&st&&et&&parseTime(et)>parseTime(st)){ task.startTime=st; task.endTime=et; saveData(); renderAll(); closeScheduleModal(); } else alert('La hora de fin debe ser posterior.'); };
-
-    // ── Notificaciones y Pomodoro ─────────────────────────────────────────────
-    const playBeep = () => { try { const ctx=new(window.AudioContext||window.webkitAudioContext)(); const now=ctx.currentTime; [0,0.2,0.4].forEach((t,i)=>{ const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=i===2?1000:880; o.connect(ctx.destination); o.start(now+t); o.stop(now+t+0.1); }); } catch(e){} };
-    const showNotification = msg => { dom.notificationMessage.textContent=msg; dom.notificationToast.classList.remove('opacity-0','translate-y-10'); playBeep(); setTimeout(()=>dom.notificationToast.classList.add('opacity-0','translate-y-10'),5000); };
-    const checkAllAlerts = () => { const now=new Date(); const ts=now.toISOString().split('T')[0]; const chk=(item,type)=>{ if(!item.startTime) return; const [h,m]=item.startTime.split(':').map(Number); const t=new Date(); t.setHours(h,m,0,0); const diff=Math.round((t-now)/60000); const title=type==='meeting'?item.title:item.description; if(diff===15&&!firedAlerts.has(`${type}-${item.id}-15`)){ showNotification(`AVISO (15 min): ${title}`); firedAlerts.add(`${type}-${item.id}-15`); } if(diff===0&&!firedAlerts.has(`${type}-${item.id}-0`)){ showNotification(`¡AHORA!: ${title}`); firedAlerts.add(`${type}-${item.id}-0`); } }; meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting')); tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>chk(t,'task')); };
-    const updateTimerDisplay = () => { dom.timerDisplay.textContent=`${Math.floor(timeRemaining/60).toString().padStart(2,'0')}:${(timeRemaining%60).toString().padStart(2,'0')}`; };
-    const switchTimerMode = mode => { timerMode=mode; resetTimer(); document.querySelectorAll('.timer-btn').forEach(b=>b.classList.remove('active')); dom[mode+'ModeBtn'].classList.add('active'); };
-    const startPauseTimer = () => { isTimerRunning=!isTimerRunning; dom.startPauseTimerBtn.textContent=isTimerRunning?'PAUSAR':'INICIAR'; if(isTimerRunning){ timerEndTime=Date.now()+timeRemaining*1000; timerIntervalId=setInterval(()=>{ timeRemaining=Math.max(0,Math.round((timerEndTime-Date.now())/1000)); updateTimerDisplay(); if(timeRemaining<=0){ clearInterval(timerIntervalId); isTimerRunning=false; dom.startPauseTimerBtn.textContent='INICIAR'; playBeep(); showNotification('¡Tiempo terminado!'); } },1000); } else clearInterval(timerIntervalId); };
-    const resetTimer = () => { clearInterval(timerIntervalId); isTimerRunning=false; timeRemaining=TIMER_MODES[timerMode]; dom.startPauseTimerBtn.textContent='INICIAR'; updateTimerDisplay(); };
-
-    const exportTasksToPDF = () => { const {jsPDF}=window.jspdf; const doc=new jsPDF(); const f=getFiltered(); if(!f.length){ alert('No hay tareas para exportar.'); return; } doc.text("Reporte de Tareas",14,16); doc.autoTable({startY:22,head:[['Descripción','Responsable','Vence','Progreso']],body:f.map(t=>[t.description,t.responsible||'N/A',formatDateDisplay(t.dueDate),t.progress+'%']),theme:'striped',headStyles:{fillColor:[41,128,185]}}); doc.save(`reporte-${new Date().toISOString().split('T')[0]}.pdf`); };
-
-    // ── Event listeners ───────────────────────────────────────────────────────
+    // ── Listeners ─────────────────────────────────────────────────────────────
     dom.showDashboardBtn.addEventListener('click',()=>switchView('dashboard'));
     dom.showAllTasksBtn.addEventListener('click',()=>switchView('tasks'));
     dom.showAllMeetingsBtn.addEventListener('click',()=>switchView('meetings'));
-    dom.showCombinedPlannerBtn.addEventListener('click',()=>{ switchView('combined'); renderCombinedPlanner(); });
+    dom.showCombinedPlannerBtn.addEventListener('click',()=>{switchView('combined');renderCombinedPlanner();});
+    dom.showHistoryBtn.addEventListener('click',()=>switchView('history'));
+    dom.histPrevMonth.addEventListener('click',()=>{histCalMonth--;if(histCalMonth<0){histCalMonth=11;histCalYear--;}renderHistCalendar();});
+    dom.histNextMonth.addEventListener('click',()=>{histCalMonth++;if(histCalMonth>11){histCalMonth=0;histCalYear++;}renderHistCalendar();});
+    dom.histCalDays.addEventListener('click',e=>{const day=e.target.closest('.hist-cal-day');if(day&&!day.classList.contains('empty')&&day.dataset.date)showHistDayDetail(day.dataset.date);});
+    dom.histDaysList.addEventListener('click',e=>{const row=e.target.closest('.hist-day-row');if(row?.dataset.date)showHistDayDetail(row.dataset.date);});
     dom.viewLaboralBtn.addEventListener('click',()=>setMainView('laboral'));
     dom.viewPersonalBtn.addEventListener('click',()=>setMainView('personal'));
     dom.openModalBtn.addEventListener('click',()=>openEditTaskModal({}));
     dom.openModalBtnAllTasks.addEventListener('click',()=>openEditTaskModal({}));
     dom.closeModalBtn.addEventListener('click',closeTaskModal);
     dom.taskForm.addEventListener('submit',saveTask);
-    dom.deleteTaskBtn.addEventListener('click',()=>{ tasks=tasks.filter(t=>t.id!==dom.taskForm.taskId.value); saveData(); renderAll(); closeTaskModal(); });
-    dom.searchCompletedTasks.addEventListener('input',e=>{ filters.completedTaskSearch=e.target.value; renderAllTasksList(); });
-    dom.toggleAllCompletedTasks.addEventListener('click',()=>{ filters.showAllCompletedTasks=!filters.showAllCompletedTasks; renderAllTasksList(); });
+    dom.deleteTaskBtn.addEventListener('click',()=>{tasks=tasks.filter(t=>t.id!==dom.taskForm.taskId.value);saveData();renderAll();closeTaskModal();});
+    dom.searchCompletedTasks.addEventListener('input',e=>{filters.completedTaskSearch=e.target.value;renderAllTasksList();});
+    dom.toggleAllCompletedTasks.addEventListener('click',()=>{filters.showAllCompletedTasks=!filters.showAllCompletedTasks;renderAllTasksList();});
     dom.addMeetingBtn.addEventListener('click',()=>openEditMeetingModal({}));
     dom.closeMeetingModalBtn.addEventListener('click',closeMeetingModal);
     dom.meetingForm.addEventListener('submit',saveMeeting);
-    dom.deleteMeetingBtn.addEventListener('click',()=>{ meetings=meetings.filter(m=>m.id!==dom.meetingForm.meetingId.value); saveData(); renderAll(); closeMeetingModal(); });
-    dom.meetingsList.addEventListener('change',e=>{ if(e.target.classList.contains('complete-meeting-cb-monitor')){ const m=meetings.find(m=>m.id===e.target.dataset.id); if(m){ m.completed=e.target.checked; saveData(); renderMeetingMonitor(); renderAllMeetingsList(); renderCombinedPlanner(); } } });
-    dom.allMeetingsList.addEventListener('change',e=>{ if(e.target.classList.contains('complete-meeting-cb')){ const m=meetings.find(m=>m.id===e.target.dataset.id); if(m){ m.completed=e.target.checked; saveData(); renderAllMeetingsList(); renderCombinedPlanner(); } } });
-    dom.searchCompletedMeetings.addEventListener('input',e=>{ filters.completedMeetingSearch=e.target.value; renderAllMeetingsList(); });
-    dom.toggleAllCompletedMeetings.addEventListener('click',()=>{ filters.showAllCompletedMeetings=!filters.showAllCompletedMeetings; renderAllMeetingsList(); });
+    dom.deleteMeetingBtn.addEventListener('click',()=>{meetings=meetings.filter(m=>m.id!==dom.meetingForm.meetingId.value);saveData();renderAll();closeMeetingModal();});
+    dom.meetingsList.addEventListener('change',e=>{if(e.target.classList.contains('complete-meeting-cb-monitor')){const m=meetings.find(m=>m.id===e.target.dataset.id);if(m){m.completed=e.target.checked;saveData();renderMeetingMonitor();renderAllMeetingsList();renderCombinedPlanner();}}});
+    dom.allMeetingsList.addEventListener('change',e=>{if(e.target.classList.contains('complete-meeting-cb')){const m=meetings.find(m=>m.id===e.target.dataset.id);if(m){m.completed=e.target.checked;saveData();renderAllMeetingsList();renderCombinedPlanner();}}});
+    dom.searchCompletedMeetings.addEventListener('input',e=>{filters.completedMeetingSearch=e.target.value;renderAllMeetingsList();});
+    dom.toggleAllCompletedMeetings.addEventListener('click',()=>{filters.showAllCompletedMeetings=!filters.showAllCompletedMeetings;renderAllMeetingsList();});
     dom.scheduleForm.addEventListener('submit',saveScheduleTime);
     dom.closeScheduleModalBtn.addEventListener('click',closeScheduleModal);
     dom.pomodoroModeBtn.addEventListener('click',()=>switchTimerMode('pomodoro'));
@@ -850,53 +929,57 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.longBreakModeBtn.addEventListener('click',()=>switchTimerMode('longBreak'));
     dom.startPauseTimerBtn.addEventListener('click',startPauseTimer);
     dom.resetTimerBtn.addEventListener('click',resetTimer);
-    dom.taskForm.progress.addEventListener('input',e=>{ dom.progressLabel.textContent=`${e.target.value}%`; });
-    dom.addResponsibleBtn.addEventListener('click',()=>{ const v=dom.newResponsibleInput.value.trim(); if(v){ const vt=dom.taskForm.taskType.value; if(!allResponsibles[vt].includes(v)){ allResponsibles[vt].push(v); allResponsibles[vt].sort(); saveData(); populateModalSelects(); renderFilters(); } dom.responsibleSelect.value=v; dom.newResponsibleInput.value=''; } });
-    dom.addTagBtn.addEventListener('click',()=>{ const v=dom.newTagInput.value.trim(); if(v){ const vt=dom.taskForm.taskType.value; if(!allTags[vt].includes(v)){ allTags[vt].push(v); allTags[vt].sort(); saveData(); populateModalSelects(); renderFilters(); } Array.from(dom.tagsSelect.options).forEach(o=>{ if(o.value===v) o.selected=true; }); dom.newTagInput.value=''; } });
-    dom.isDelegatedCheckbox.addEventListener('change',e=>{ dom.plannedDateContainer.style.display=e.target.checked?'none':'block'; if(e.target.checked) plannedDatepicker.clear(); });
-    dom.isRepetitiveCheckbox.addEventListener('change',e=>{ const r=e.target.checked; dom.dateControlsContainer.classList.toggle('hidden',r); dom.delegatedContainer.classList.toggle('hidden',r); dom.progressContainerModal.classList.toggle('hidden',r); dom.plannedDateContainer.style.display=r?'none':(dom.isDelegatedCheckbox.checked?'none':'block'); if(r){ plannedDatepicker.clear(); dueDatepicker.clear(); dom.isDelegatedCheckbox.checked=false; } });
-    dom.addSubtaskBtn.addEventListener('click',()=>{ const t=dom.newSubtaskText.value.trim(); if(!t) return; currentSubtasks.push({id:Date.now().toString(),text:t,responsible:dom.newSubtaskResponsible.value.trim(),isCompleted:false}); dom.newSubtaskText.value=''; dom.newSubtaskResponsible.value=''; renderSubtasksInModal(); });
-    dom.subtasksList.addEventListener('click',e=>{ const id=e.target.dataset.id; if(e.target.classList.contains('subtask-checkbox')){ currentSubtasks.find(s=>s.id===id).isCompleted=e.target.checked; renderSubtasksInModal(); } if(e.target.classList.contains('delete-subtask-btn')){ currentSubtasks=currentSubtasks.filter(s=>s.id!==id); renderSubtasksInModal(); } });
-    dom.exportBtn.addEventListener('click',()=>{ const blob=new Blob([JSON.stringify({tasks,meetings,allTags,allResponsibles},null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='control-tareas.json'; a.click(); URL.revokeObjectURL(url); });
-    dom.importFile.addEventListener('change',e=>{ const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=ev=>{ try{ const d=JSON.parse(ev.target.result); if(d&&typeof d==='object'){ tasks=d.tasks||[]; meetings=d.meetings||[]; allTags=d.allTags||{laboral:[],personal:[]}; allResponsibles=d.allResponsibles||{laboral:[],personal:[]}; saveData(); renderAll(); alert('¡Datos importados y guardados en la nube!'); } }catch{ alert('Error al leer el archivo.'); } }; reader.readAsText(file); e.target.value=''; });
-    dom.filterTagsContainer.addEventListener('click',e=>{ if(e.target.classList.contains('tag-filter')){ filters.tag=e.target.dataset.tag==='all'?null:e.target.dataset.tag; renderAll(); } });
-    document.addEventListener('click',e=>{ const card=e.target.closest('.task-card'); if(card&&!e.target.closest('.progress-slider,.assign-date-btn,.unscheduled-task,.subtask-tooltip,.repetitive-cb,.time-slot,.absolute')){ const t=tasks.find(t=>t.id===card.dataset.id); if(t) openEditTaskModal(t); } });
-    document.addEventListener('input',e=>{ if(e.target.classList.contains('progress-slider')){ const t=tasks.find(t=>t.id===e.target.dataset.id); if(t){ t.progress=parseInt(e.target.value,10); saveData(); renderAll(); } } });
-    dom.allTasksList.addEventListener('click',e=>{ if(e.target.classList.contains('assign-date-btn')){ rescheduleDatePicker.config.onChange=[(d,ds)=>{ const t=tasks.find(t=>t.id===e.target.dataset.id); if(t){ t.plannedDate=ds; saveData(); renderAll(); } }]; rescheduleDatePicker.open(); } });
-    dom.responsibleFilterContainer.addEventListener('change',e=>{ if(e.target.id==='filter-responsible'){ filters.responsible=e.target.value; renderAllTasksList(); } });
-    dom.filterImportance.addEventListener('change',e=>{ filters.importance=e.target.value; renderAllTasksList(); });
-    dom.filterUrgency.addEventListener('change',e=>{ filters.urgency=e.target.value; renderAllTasksList(); });
+    dom.taskForm.progress.addEventListener('input',e=>{dom.progressLabel.textContent=`${e.target.value}%`;});
+    dom.addResponsibleBtn.addEventListener('click',()=>{const v=dom.newResponsibleInput.value.trim();if(v){const vt=dom.taskForm.taskType.value;if(!allResponsibles[vt].includes(v)){allResponsibles[vt].push(v);allResponsibles[vt].sort();saveData();populateModalSelects();renderFilters();}dom.responsibleSelect.value=v;dom.newResponsibleInput.value='';}});
+    dom.addTagBtn.addEventListener('click',()=>{const v=dom.newTagInput.value.trim();if(v){const vt=dom.taskForm.taskType.value;if(!allTags[vt].includes(v)){allTags[vt].push(v);allTags[vt].sort();saveData();populateModalSelects();renderFilters();}Array.from(dom.tagsSelect.options).forEach(o=>{if(o.value===v)o.selected=true;});dom.newTagInput.value='';}});
+    dom.isDelegatedCheckbox.addEventListener('change',e=>{dom.plannedDateContainer.style.display=e.target.checked?'none':'block';if(e.target.checked)plannedDatepicker.clear();});
+    dom.isRepetitiveCheckbox.addEventListener('change',e=>{const r=e.target.checked;dom.dateControlsContainer.classList.toggle('hidden',r);dom.delegatedContainer.classList.toggle('hidden',r);dom.progressContainerModal.classList.toggle('hidden',r);dom.plannedDateContainer.style.display=r?'none':(dom.isDelegatedCheckbox.checked?'none':'block');if(r){plannedDatepicker.clear();dueDatepicker.clear();dom.isDelegatedCheckbox.checked=false;}});
+    dom.addSubtaskBtn.addEventListener('click',()=>{const t=dom.newSubtaskText.value.trim();if(!t)return;currentSubtasks.push({id:Date.now().toString(),text:t,responsible:dom.newSubtaskResponsible.value.trim(),isCompleted:false});dom.newSubtaskText.value='';dom.newSubtaskResponsible.value='';renderSubtasksInModal();});
+    dom.subtasksList.addEventListener('click',e=>{const id=e.target.dataset.id;if(e.target.classList.contains('subtask-checkbox')){currentSubtasks.find(s=>s.id===id).isCompleted=e.target.checked;renderSubtasksInModal();}if(e.target.classList.contains('delete-subtask-btn')){currentSubtasks=currentSubtasks.filter(s=>s.id!==id);renderSubtasksInModal();}});
+    dom.exportBtn.addEventListener('click',()=>{const blob=new Blob([JSON.stringify({tasks,meetings,allTags,allResponsibles},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='control-tareas.json';a.click();URL.revokeObjectURL(url);});
+    dom.importFile.addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(d&&typeof d==='object'){tasks=d.tasks||[];meetings=d.meetings||[];allTags=d.allTags||{laboral:[],personal:[]};allResponsibles=d.allResponsibles||{laboral:[],personal:[]};saveData();renderAll();alert('¡Datos importados!');}}catch{alert('Error al leer el archivo.');}};reader.readAsText(file);e.target.value='';});
+    dom.filterTagsContainer.addEventListener('click',e=>{if(e.target.classList.contains('tag-filter')){filters.tag=e.target.dataset.tag==='all'?null:e.target.dataset.tag;renderAll();}});
+    document.addEventListener('click',e=>{const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider,.assign-date-btn,.unscheduled-task,.repetitive-cb,.time-slot,.absolute')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);}});
+    document.addEventListener('input',e=>{if(e.target.classList.contains('progress-slider')){const t=tasks.find(t=>t.id===e.target.dataset.id);if(t){t.progress=parseInt(e.target.value,10);saveData();renderAll();}}});
+    dom.allTasksList.addEventListener('click',e=>{if(e.target.classList.contains('assign-date-btn')){rescheduleDP.config.onChange=[(d,ds)=>{const t=tasks.find(t=>t.id===e.target.dataset.id);if(t){t.plannedDate=ds;saveData();renderAll();}}];rescheduleDP.open();}});
+    dom.responsibleFilterContainer.addEventListener('change',e=>{if(e.target.id==='filter-responsible'){filters.responsible=e.target.value;renderAllTasksList();}});
+    dom.filterImportance.addEventListener('change',e=>{filters.importance=e.target.value;renderAllTasksList();});
+    dom.filterUrgency.addEventListener('change',e=>{filters.urgency=e.target.value;renderAllTasksList();});
     dom.exportPdfBtn.addEventListener('click',exportTasksToPDF);
     filterDatepicker.config.onChange.push(()=>renderAllTasksList());
-    filterMeetingDatepicker.config.onChange.push(()=>renderAllMeetingsList());
-
+    filterMtgDP.config.onChange.push(()=>renderAllMeetingsList());
     dom.plannerSection.addEventListener('click',e=>{
-        const ts=e.target.closest('.time-slot'); if(ts) openEditTaskModal({},ts.dataset.time);
-        const ut=e.target.closest('.unscheduled-task'); if(ut) openScheduleModal(ut.dataset.id);
-        const cb=e.target.closest('.repetitive-cb'); if(cb){ const t=tasks.find(t=>t.id===cb.dataset.id); if(t){ if(!t.completedDates) t.completedDates=[]; const idx=t.completedDates.indexOf(cb.dataset.date); if(cb.checked){ if(idx===-1) t.completedDates.push(cb.dataset.date); } else { if(idx!==-1) t.completedDates.splice(idx,1); } saveData(); renderAll(); } }
-        const er=e.target.closest('.edit-repetitive-btn'); if(er){ const t=tasks.find(t=>t.id===er.dataset.id); if(t) openEditTaskModal(t); }
+        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
+        const ut=e.target.closest('.unscheduled-task');if(ut)openScheduleModal(ut.dataset.id);
+        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
+        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
     });
     dom.combinedPlannerContainer.addEventListener('click',e=>{
-        const ts=e.target.closest('.time-slot'); if(ts) openEditTaskModal({},ts.dataset.time);
-        const card=e.target.closest('.task-card'); if(card&&!e.target.closest('.progress-slider')){ const t=tasks.find(t=>t.id===card.dataset.id); if(t) openEditTaskModal(t); }
-        const mc=e.target.closest('.meeting-card'); if(mc){ const m=meetings.find(m=>m.id===mc.dataset.id); if(m) openEditMeetingModal(m); }
-        const cb=e.target.closest('.repetitive-cb'); if(cb){ const t=tasks.find(t=>t.id===cb.dataset.id); if(t){ if(!t.completedDates) t.completedDates=[]; const idx=t.completedDates.indexOf(cb.dataset.date); if(cb.checked){ if(idx===-1) t.completedDates.push(cb.dataset.date); } else { if(idx!==-1) t.completedDates.splice(idx,1); } saveData(); renderAll(); } }
-        const er=e.target.closest('.edit-repetitive-btn'); if(er){ const t=tasks.find(t=>t.id===er.dataset.id); if(t) openEditTaskModal(t); }
+        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
+        const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);}
+        const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);}
+        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
+        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
     });
 
-    // ── Iniciar app ───────────────────────────────────────────────────────────
-    setInterval(checkAllAlerts, 60000);
-    setInterval(updatePlannerClock, 1000);
-
-    // Si Firebase ya está listo al cargar el DOM, iniciar directamente
-    if(window._fbReady) {
-        initApp();
-    } else {
-        // Esperar a que Firebase cargue
-        window.addEventListener('fbReady', initApp, { once: true });
-        // Si Firebase tarda más de 5s en cargar el módulo, arrancar en modo local
-        setTimeout(()=>{ if(!window._fbReady){ applyData({ tasks:JSON.parse(localStorage.getItem('tasks'))||[], meetings:JSON.parse(localStorage.getItem('meetings'))||[], allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]}, allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]} }); switchView('combined'); setStatus('local','💾 Modo local (sin nube)'); } }, 5000);
-    }
+    // ── Init ──────────────────────────────────────────────────────────────────
+    const checkDueDates=()=>{const today=new Date();today.setHours(0,0,0,0);let upd=false;tasks.forEach(t=>{if(t.dueDate&&new Date(t.dueDate)<=new Date(today.getTime()+864e5)&&!t.isUrgent){t.isUrgent=true;upd=true;}});if(upd)saveData();};
+    const initApp=async()=>{
+        setStatus('connecting','⟳ Conectando...');
+        const local={tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]}};
+        applyData(local);
+        dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};
+        updateHistBadge();
+        switchView('combined');
+        const[fbData,histData]=await Promise.all([Promise.race([fbLoad(),new Promise(r=>setTimeout(()=>r(null),8000))]),fbLoadHistory()]);
+        if(fbData?.tasks){applyData(fbData);setStatus('connected','☁ Conectado');if(window._fbAPI){if(fbUnsubscribe)fbUnsubscribe();fbUnsubscribe=window._fbAPI.subscribe(d=>{applyData(d);setStatus('connected','☁ Sincronizado');});window._fbAPI.subscribeHistory(h=>{dailyHistory=h;updateHistBadge();});}}else setStatus('local','💾 Modo local');
+        if(histData?.snapshots){dailyHistory=histData;updateHistBadge();}
+        scheduleMidnightSnapshot();
+    };
+    setInterval(checkAllAlerts,60000);
+    setInterval(updatePlannerClock,1000);
+    if(window._fbReady)initApp();
+    else{window.addEventListener('fbReady',initApp,{once:true});setTimeout(()=>{if(!window._fbReady){applyData({tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]}});dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};updateHistBadge();switchView('combined');setStatus('local','💾 Modo local');scheduleMidnightSnapshot();}},5000);}
 });
 </script>
 </body>
