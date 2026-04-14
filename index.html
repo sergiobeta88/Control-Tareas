@@ -426,7 +426,7 @@
     // ── UID autorizado ────────────────────────────────────────────────────────
     // Después de hacer login por primera vez, copia tu UID del panel amarillo
     // y pégalo aquí entre las comillas. Luego sube el archivo a GitHub.
-    const AUTHORIZED_UID = ["H8Z6S3JZnCbmX2YweSyYUDNzWRl1", "l689xXSMhgToHJqsoiiQD5xU7l42"];   // <-- pega tu UID aquí
+    const AUTHORIZED_UIDS = ["H8Z6S3JZnCbmX2YweSyYUDNzWRl1", "l689xXSMhgToHJqsoiiQD5xU7l42"];
 
     // ── UI helpers ────────────────────────────────────────────────────────────
     const loginScreen  = document.getElementById('login-screen');
@@ -478,7 +478,7 @@
         showLoading();
 
         // Si aún no se ha configurado el UID autorizado, mostrar panel de ayuda
-        if (!AUTHORIZED_UID) {
+        if (!AUTHORIZED_UIDS || AUTHORIZED_UIDS.length === 0) {
             uidPanel.classList.remove('hidden');
             uidDisplay.textContent = user.uid;
             loginScreen.classList.remove('hidden');
