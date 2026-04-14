@@ -426,7 +426,7 @@
     // ── UID autorizado ────────────────────────────────────────────────────────
     // Después de hacer login por primera vez, copia tu UID del panel amarillo
     // y pégalo aquí entre las comillas. Luego sube el archivo a GitHub.
-    const AUTHORIZED_UID = "H8Z6S3JZnCbmX2YweSyYUDNzWRl1";   // <-- pega tu UID aquí
+    const AUTHORIZED_UID = ["H8Z6S3JZnCbmX2YweSyYUDNzWRl1", "l689xXSMhgToHJqsoiiQD5xU7l42"];   // <-- pega tu UID aquí
 
     // ── UI helpers ────────────────────────────────────────────────────────────
     const loginScreen  = document.getElementById('login-screen');
@@ -489,7 +489,7 @@
             return;
         }
 
-        if (user.uid !== AUTHORIZED_UID) {
+        if (!AUTHORIZED_UIDS.includes(user.uid)) {
             signOut(auth);
             showError('Acceso no autorizado. Esta aplicación es de uso privado.');
             hideLoading();
