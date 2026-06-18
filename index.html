@@ -621,6 +621,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     const fpL={firstDayOfWeek:1,weekdays:{shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"]},months:{shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]}};
     const fpB={dateFormat:"Y-m-d",altInput:true,altFormat:"D, M j, Y",locale:fpL};
     const fpT={enableTime:true,noCalendar:true,dateFormat:"H:i",time_24hr:true,minuteIncrement:15};
+    // Devuelve una nueva fecha sumando una hora (para fijar la hora de fin por defecto)
+    const plusHour=d=>{const n=new Date(d);n.setHours(n.getHours()+1);return n;};
     const dueDatepicker    =flatpickr("#dueDate",fpB);
     const plannedDatepicker=flatpickr("#plannedDate",{...fpB,onChange(sd){dom.timeContainerModal.classList.toggle('hidden',!sd.length);if(!sd.length){startTP.clear();endTP.clear();}}});
     const filterDatepicker =flatpickr("#filter-date",{...fpB,mode:"range",onChange:[]});
@@ -628,11 +630,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     const meetingDatepicker=flatpickr("#meetingDate",{...fpB,onChange:[]});
     const histTaskDP       =flatpickr("#filter-history-task-date",{...fpB,mode:"range",onChange:d=>{filters.historyTaskDateRange=d;renderAllTasksList();}});
     const histMtgDP        =flatpickr("#filter-history-meeting-date",{...fpB,mode:"range",onChange:d=>{filters.historyMeetingDateRange=d;renderAllMeetingsList();}});
-    const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(sd[0],false);mtgEndTP.set('minTime',ds);}}});
+    const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(plusHour(sd[0]),false);mtgEndTP.set('minTime',ds);}}});
     const mtgEndTP         =flatpickr("#meetingEndTime",{...fpT,time_24hr:false});
-    const startTP          =flatpickr("#startTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)endTP.setDate(sd[0],false);}});
+    const startTP          =flatpickr("#startTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)endTP.setDate(plusHour(sd[0]),false);}});
     const endTP            =flatpickr("#endTime",{...fpT,time_24hr:false});
-    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)schEndTP.setDate(sd[0],false);}});
+    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)schEndTP.setDate(plusHour(sd[0]),false);}});
     const schEndTP         =flatpickr("#scheduleEndTime",{...fpT,time_24hr:false});
     const rescheduleDP     =flatpickr(document.createElement('input'),{...fpB,onChange:[]});
 
@@ -934,7 +936,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
-                return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
+                return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><button type="button" class="mtg-done-toggle absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold leading-none ${ev.completed?'bg-green-500 text-white border border-green-600':'bg-white text-cyan-600 border border-cyan-400'}" data-id="${ev.id}" title="${ev.completed?'Marcar como pendiente':'Marcar como realizada'}">${ev.completed?'✓':''}</button><p class="font-bold text-[11px] truncate pr-4">${ev.title}</p></div>`;
             }
         }return'';
     }).join('');
@@ -1188,6 +1190,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);return;}
         const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}return;}
         const ut=e.target.closest('.unscheduled-task');if(ut){openScheduleModal(ut.dataset.id);return;}
+        const dt=e.target.closest('.mtg-done-toggle');if(dt){const m=meetings.find(m=>m.id===dt.dataset.id);if(m){m.completed=!m.completed;saveData();renderAll();}e.stopPropagation();return;}
         const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);e.stopPropagation();return;}
         const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);e.stopPropagation();return;}
         const ts=e.target.closest('.time-slot');if(ts)openSlotChoice(ts.dataset.time);
@@ -1195,6 +1198,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.combinedPlannerContainer.addEventListener('click',e=>{
         const ts=e.target.closest('.time-slot');if(ts){openSlotChoice(ts.dataset.time);return;}
         const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);}
+        const dt=e.target.closest('.mtg-done-toggle');if(dt){const m=meetings.find(m=>m.id===dt.dataset.id);if(m){m.completed=!m.completed;saveData();renderAll();}e.stopPropagation();return;}
         const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);}
         const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
         const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
