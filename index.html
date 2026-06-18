@@ -48,6 +48,10 @@
         .hist-cal-day:hover:not(.empty) { background:#e0e7ff !important; }
         .hist-cal-day.has-snap { background:#dbeafe !important; color:#1d4ed8 !important; font-weight:700 !important; }
         .hist-cal-day.has-snap:hover { background:#bfdbfe !important; }
+        .hist-cal-day.has-future { background:#dcfce7 !important; color:#166534 !important; font-weight:700 !important; }
+        .hist-cal-day.has-future:hover { background:#bbf7d0 !important; }
+        .future-dot { position:absolute !important; bottom:2px !important; left:50% !important; transform:translateX(-50%) !important; width:3px !important; height:3px !important; border-radius:50% !important; background:#16a34a !important; }
+        .hist-cal-day.selected .future-dot { background:white !important; }
         .hist-cal-day.selected { background:#3b82f6 !important; color:white !important; border-radius:50% !important; }
         .hist-cal-day.today-mark { box-shadow:inset 0 0 0 2px #f97316 !important; border-radius:50% !important; }
         .hist-cal-day.empty { cursor:default !important; opacity:0 !important; pointer-events:none !important; }
@@ -88,7 +92,7 @@
 
     <nav class="flex justify-center border-b-2 border-gray-200 mb-8 overflow-x-auto whitespace-nowrap">
         <button id="show-combined-planner-btn" class="py-4 px-6 block text-blue-600 border-b-2 border-blue-600 font-medium">Cronograma Combinado</button>
-        <button id="show-history-btn"          class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600 flex items-center gap-1.5">📅 Historial <span id="hist-badge" class="hidden bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full"></span></button>
+        <button id="show-history-btn"          class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600 flex items-center gap-1.5">📅 Historial</button>
         <button id="show-dashboard-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Panel Principal</button>
         <button id="show-all-tasks-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Tareas</button>
         <button id="show-all-meetings-btn"     class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Reuniones</button>
@@ -127,6 +131,7 @@
                     <div id="hist-cal-days"></div>
                     <div class="flex gap-2 mt-2 text-[9px] text-gray-400 justify-center flex-wrap">
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-100 border border-blue-300 rounded-sm inline-block"></span>Con registro</span>
+                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-green-100 border border-green-400 rounded-sm inline-block"></span>Planificado</span>
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-500 rounded-full inline-block"></span>Seleccionado</span>
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full border-2 border-orange-400 inline-block"></span>Hoy</span>
                     </div>
@@ -136,7 +141,6 @@
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
                         <h3 class="font-bold text-gray-700 text-sm">Registros guardados</h3>
-                        <span id="hist-count-label" class="text-xs text-gray-400"></span>
                     </div>
                     <div id="hist-days-list" class="divide-y divide-gray-100 max-h-72 overflow-y-auto">
                         <p id="hist-list-empty" class="text-center text-gray-400 text-xs py-6 px-4">No hay registros todavía.<br>Se guardan automáticamente a medianoche.</p>
@@ -305,6 +309,14 @@
                     <button type="button" id="add-subtask-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Añadir</button>
                 </div>
             </div>
+            <div class="border-t pt-4 mt-6">
+                <h3 class="text-lg font-medium mb-3">Comentarios</h3>
+                <div id="comments-list" class="space-y-2 mb-3"></div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <textarea id="new-comment-text" rows="2" placeholder="Escribe un comentario..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"></textarea>
+                    <button type="button" id="add-comment-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 sm:self-start">Añadir</button>
+                </div>
+            </div>
             <div class="flex justify-end gap-3 mt-8">
                 <button type="button" id="deleteTaskBtn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
                 <button type="button" id="closeModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
@@ -350,6 +362,18 @@
                 <button type="submit" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md">Agendar</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="slotChoiceModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
+    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-xs transform scale-95 text-center">
+        <h2 class="text-xl font-bold mb-1">¿Qué deseas crear?</h2>
+        <p id="slot-choice-time" class="text-sm text-gray-500 mb-6"></p>
+        <div class="flex flex-col gap-3">
+            <button type="button" id="slot-choice-task" class="bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-md hover:bg-blue-700 transition">📝 Nueva Tarea</button>
+            <button type="button" id="slot-choice-meeting" class="bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-md hover:bg-indigo-700 transition">📅 Nueva Reunión</button>
+            <button type="button" id="slot-choice-cancel" class="text-gray-500 text-sm font-medium py-1 hover:text-gray-700">Cancelar</button>
+        </div>
     </div>
 </div>
 
@@ -541,7 +565,6 @@ document.addEventListener('DOMContentLoaded',()=>{
         histPrevMonth:$('hist-prev-month'), histNextMonth:$('hist-next-month'),
         histDetailPlaceholder:$('hist-detail-placeholder'), histDetailContent:$('hist-detail-content'),
         histDaysList:$('hist-days-list'), histListEmpty:$('hist-list-empty'),
-        histCountLabel:$('hist-count-label'), histBadge:$('hist-badge'),
         taskModal:$('taskModal'), modalContent:$('modal-content'),
         openModalBtn:$('openModalBtn'), closeModalBtn:$('closeModalBtn'),
         taskForm:$('taskForm'), deleteTaskBtn:$('deleteTaskBtn'),
@@ -577,12 +600,16 @@ document.addEventListener('DOMContentLoaded',()=>{
         filterMeetingDate:$('filter-meeting-date'), manageTagsBtn:$('manage-tags-btn'),
         tagManagementModal:$('tagManagementModal'), tagManagementList:$('tag-management-list'),
         closeTagManagementModalBtn:$('closeTagManagementModalBtn'), openModalBtnAllTasks:$('openModalBtnAllTasks'),
+        slotChoiceModal:$('slotChoiceModal'), slotChoiceTime:$('slot-choice-time'),
+        slotChoiceTask:$('slot-choice-task'), slotChoiceMeeting:$('slot-choice-meeting'),
+        slotChoiceCancel:$('slot-choice-cancel'),
+        commentsList:$('comments-list'), newCommentText:$('new-comment-text'), addCommentBtn:$('add-comment-btn'),
     };
 
     // ── Estado ───────────────────────────────────────────────────────────────
     let tasks=[],meetings=[],allTags={laboral:[],personal:[]},allResponsibles={laboral:[],personal:[]};
     let dailyHistory={snapshots:{}};
-    let currentSubtasks=[],filters={importance:'all',urgency:'all',tag:null,dateRange:[],responsible:'all',completedTaskSearch:'',completedMeetingSearch:'',showAllCompletedTasks:false,showAllCompletedMeetings:false,historyTaskDateRange:[],historyMeetingDateRange:[]};
+    let currentSubtasks=[],currentComments=[],pendingSlotTime=null,filters={importance:'all',urgency:'all',tag:null,dateRange:[],responsible:'all',completedTaskSearch:'',completedMeetingSearch:'',showAllCompletedTasks:false,showAllCompletedMeetings:false,historyTaskDateRange:[],historyMeetingDateRange:[]};
     let firedAlerts=new Set(),currentView='laboral',fbUnsubscribe=null;
     let histCalYear=new Date().getFullYear(),histCalMonth=new Date().getMonth(),histSelectedDate=null;
 
@@ -603,14 +630,24 @@ document.addEventListener('DOMContentLoaded',()=>{
     const histMtgDP        =flatpickr("#filter-history-meeting-date",{...fpB,mode:"range",onChange:d=>{filters.historyMeetingDateRange=d;renderAllMeetingsList();}});
     const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(sd[0],false);mtgEndTP.set('minTime',ds);}}});
     const mtgEndTP         =flatpickr("#meetingEndTime",{...fpT,time_24hr:false});
-    const startTP          =flatpickr("#startTime",{...fpT,onChange(sd){if(sd.length)endTP.setDate(sd[0],false);}});
-    const endTP            =flatpickr("#endTime",fpT);
-    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,onChange(sd){if(sd.length)schEndTP.setDate(sd[0],false);}});
-    const schEndTP         =flatpickr("#scheduleEndTime",fpT);
+    const startTP          =flatpickr("#startTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)endTP.setDate(sd[0],false);}});
+    const endTP            =flatpickr("#endTime",{...fpT,time_24hr:false});
+    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)schEndTP.setDate(sd[0],false);}});
+    const schEndTP         =flatpickr("#scheduleEndTime",{...fpT,time_24hr:false});
     const rescheduleDP     =flatpickr(document.createElement('input'),{...fpB,onChange:[]});
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const parseTime=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h+m/60;};
+    // Convierte "HH:MM" (24h) a formato 12 horas con AM/PM, p.ej. "14:30" -> "2:30 PM"
+    const fmt12=t=>{if(!t)return'';const p=t.split(':');const h=Number(p[0]),m=Number(p[1]);if(isNaN(h)||isNaN(m))return t;const ap=h>=12?'PM':'AM';let hh=h%12;if(hh===0)hh=12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
+    const todayStrLocal=()=>new Date().toISOString().split('T')[0];
+    // Conjunto de fechas (hoy o futuras) que tienen tareas o reuniones planificadas
+    const getPlannedFutureDates=()=>{
+        const t0=todayStrLocal();const set=new Set();
+        tasks.forEach(t=>{if(t.plannedDate&&!t.isRepetitive&&t.plannedDate>=t0)set.add(t.plannedDate);});
+        meetings.forEach(m=>{if(m.date&&m.date>=t0)set.add(m.date);});
+        return set;
+    };
     const formatDateDisplay=s=>{if(!s)return'N/A';return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'});};
     const updatePlannerClock=()=>{
         const now=new Date();
@@ -655,11 +692,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             scheduleMidnightSnapshot();
         },midnight-now);
     };
-    const updateHistBadge=()=>{
-        const n=Object.keys(dailyHistory.snapshots).length;
-        if(n>0){dom.histBadge.textContent=n;dom.histBadge.classList.remove('hidden');}
-        else dom.histBadge.classList.add('hidden');
-    };
+    const updateHistBadge=()=>{ /* contador eliminado: el número podía crecer demasiado */ };
 
     // ── Calendario ────────────────────────────────────────────────────────────
     const renderHistCalendar=()=>{
@@ -674,6 +707,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         const MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         dom.histMonthLabel.textContent=`${MONTHS[histCalMonth]} ${histCalYear}`;
         const today=new Date().toISOString().split('T')[0];
+        const plannedDates=getPlannedFutureDates();
         const startWd=(new Date(histCalYear,histCalMonth,1).getDay()+6)%7;
         const daysInMonth=new Date(histCalYear,histCalMonth+1,0).getDate();
         let html='';
@@ -681,12 +715,16 @@ document.addEventListener('DOMContentLoaded',()=>{
         for(let d=1;d<=daysInMonth;d++){
             const ds=`${histCalYear}-${String(histCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
             const hasSnap=!!dailyHistory.snapshots[ds];
+            const hasFuture=!hasSnap&&plannedDates.has(ds);
             const isToday=ds===today,isSel=ds===histSelectedDate;
             let cls='hist-cal-day';
             if(hasSnap) cls+=' has-snap';
+            if(hasFuture) cls+=' has-future';
             if(isToday) cls+=' today-mark';
             if(isSel) cls+=' selected';
-            const dot=hasSnap&&!isSel?'<div class="snap-dot"></div>':'';
+            let dot='';
+            if(hasSnap&&!isSel)dot='<div class="snap-dot"></div>';
+            else if(hasFuture&&!isSel)dot='<div class="future-dot"></div>';
             html+=`<div class="${cls}" data-date="${ds}">${d}${dot}</div>`;
         }
         dom.histCalDays.innerHTML=html;
@@ -695,25 +733,29 @@ document.addEventListener('DOMContentLoaded',()=>{
     // ── Lista lateral de días ─────────────────────────────────────────────────
     const renderHistDaysList=()=>{
         const snaps=Object.values(dailyHistory.snapshots).sort((a,b)=>b.dateStr.localeCompare(a.dateStr));
-        const n=snaps.length;
-        dom.histCountLabel.textContent=n>0?`${n} registro${n>1?'s':''}`:'' ;
-        if(!n){ dom.histListEmpty.classList.remove('hidden'); return; }
+        // Días futuros (u hoy) con planificación y sin registro guardado todavía
+        const planned=[...getPlannedFutureDates()].filter(ds=>!dailyHistory.snapshots[ds]).sort();
+        if(!snaps.length&&!planned.length){ dom.histListEmpty.classList.remove('hidden'); dom.histDaysList.innerHTML=''; dom.histDaysList.appendChild(dom.histListEmpty); return; }
         dom.histListEmpty.classList.add('hidden');
-        dom.histDaysList.innerHTML=snaps.map(s=>{
+        const rowHtml=(s,isPlanned)=>{
             const pct=s.completionPct||0;
             const barCol=pct>=80?'bg-green-400':pct>=50?'bg-yellow-400':'bg-red-400';
             const isActive=s.dateStr===histSelectedDate;
-            return`<div class="hist-day-row px-4 py-2.5 cursor-pointer ${isActive?'active-row':''}" data-date="${s.dateStr}">
+            const plannedTag=isPlanned?`<span class="text-[8px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full flex-shrink-0">Planificado</span>`:'';
+            return`<div class="hist-day-row px-4 py-2.5 cursor-pointer ${isActive?'active-row':''} ${isPlanned?'border-l-2 border-green-300':''}" data-date="${s.dateStr}">
                 <div class="flex items-center justify-between gap-2">
                     <div class="min-w-0">
-                        <p class="text-xs font-semibold text-gray-800 truncate capitalize">${s.dayName||formatDateDisplay(s.dateStr)}</p>
+                        <p class="text-xs font-semibold text-gray-800 truncate capitalize flex items-center gap-1.5">${s.dayName||formatDateDisplay(s.dateStr)} ${plannedTag}</p>
                         <p class="text-[10px] text-gray-400">${s.stats.completedTasks}/${s.stats.totalTasks} tareas · ${s.stats.doneMeetings}/${s.stats.totalMeetings} reuniones</p>
                     </div>
                     <span class="text-xs font-bold flex-shrink-0 ${pct>=80?'text-green-600':pct>=50?'text-yellow-600':'text-red-500'}">${pct}%</span>
                 </div>
                 <div class="pct-bar-wrap mt-1.5"><div class="pct-bar ${barCol}" style="width:${pct}%"></div></div>
             </div>`;
-        }).join('');
+        };
+        const plannedHtml=planned.map(ds=>rowHtml(buildDaySnapshot(ds),true)).join('');
+        const savedHtml=snaps.map(s=>rowHtml(s,false)).join('');
+        dom.histDaysList.innerHTML=plannedHtml+savedHtml;
     };
 
     // ── Detalle del día ───────────────────────────────────────────────────────
@@ -724,9 +766,13 @@ document.addEventListener('DOMContentLoaded',()=>{
         dom.histDetailPlaceholder.classList.add('hidden');
         dom.histDetailContent.classList.remove('hidden');
 
-        const snap=dailyHistory.snapshots[dateStr];
+        let snap=dailyHistory.snapshots[dateStr];
+        let isPreview=false;
         if(!snap){
-            dom.histDetailContent.innerHTML=`<div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400"><p class="text-4xl mb-3">📭</p><p class="font-semibold text-gray-600">${formatDateDisplay(dateStr)}</p><p class="text-sm mt-1">No hay cronograma guardado para este día.</p></div>`;
+            if(getPlannedFutureDates().has(dateStr)){ snap=buildDaySnapshot(dateStr); isPreview=true; }
+        }
+        if(!snap){
+            dom.histDetailContent.innerHTML=`<div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400"><p class="text-4xl mb-3">📭</p><p class="font-semibold text-gray-600">${formatDateDisplay(dateStr)}</p><p class="text-sm mt-1">No hay cronograma guardado ni planificación para este día.</p></div>`;
             return;
         }
 
@@ -751,10 +797,10 @@ document.addEventListener('DOMContentLoaded',()=>{
             if(ev.evType==='task'){
                 const done=ev.progress===100;
                 const cl=done?'bg-green-100 border-green-400':(ev.type==='personal'?'bg-orange-100 border-orange-300':'bg-blue-100 border-blue-300');
-                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${done?'✔ ':''}${ev.description}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${done?'✔ ':''}${ev.description}</span><span class="text-gray-400">${fmt12(ev.startTime)}–${fmt12(ev.endTime)}</span></div>`;
             }else{
                 const cl=ev.completed?'bg-teal-100 border-teal-300':'bg-cyan-100 border-cyan-300';
-                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${ev.completed?'✔ ':''}${ev.title}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${ev.completed?'✔ ':''}${ev.title}</span><span class="text-gray-400">${fmt12(ev.startTime)}–${fmt12(ev.endTime)}</span></div>`;
             }
         }).join('');
 
@@ -765,12 +811,12 @@ document.addEventListener('DOMContentLoaded',()=>{
 
         // Tareas
         const tasksHtml=(snap.tasks||[]).length>0
-            ?snap.tasks.map(t=>{const done=t.progress===100;return`<div class="flex items-center gap-3 p-3 rounded-lg border ${done?'border-green-200 bg-green-50':t.type==='personal'?'border-orange-100 bg-orange-50':'border-blue-100 bg-blue-50'}"><span class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${done?'bg-green-500 text-white':'bg-white border-2 border-gray-300 text-gray-500'}">${done?'✓':t.progress+'%'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold truncate ${done?'line-through text-gray-400':''}">${t.description}</p><p class="text-xs text-gray-400">${t.startTime&&t.endTime?t.startTime+'–'+t.endTime:'Sin horario'} · ${t.responsible||'Sin asignar'}</p></div><span class="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'Personal':'Laboral'}</span></div>`;}).join('')
+            ?snap.tasks.map(t=>{const done=t.progress===100;return`<div class="flex items-center gap-3 p-3 rounded-lg border ${done?'border-green-200 bg-green-50':t.type==='personal'?'border-orange-100 bg-orange-50':'border-blue-100 bg-blue-50'}"><span class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${done?'bg-green-500 text-white':'bg-white border-2 border-gray-300 text-gray-500'}">${done?'✓':t.progress+'%'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold truncate ${done?'line-through text-gray-400':''}">${t.description}</p><p class="text-xs text-gray-400">${t.startTime&&t.endTime?fmt12(t.startTime)+'–'+fmt12(t.endTime):'Sin horario'} · ${t.responsible||'Sin asignar'}</p></div><span class="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'Personal':'Laboral'}</span></div>`;}).join('')
             :'<p class="text-sm text-gray-400 py-2">Sin tareas planificadas para este día.</p>';
 
         // Reuniones
         const mtgsHtml=(snap.meetings||[]).length>0
-            ?snap.meetings.map(m=>`<div class="flex items-center gap-3 p-3 rounded-lg border ${m.completed?'border-teal-200 bg-teal-50':'border-cyan-100 bg-cyan-50'}"><span class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.completed?'bg-teal-500 text-white':'bg-gray-200 text-gray-500'}">${m.completed?'✓':'•'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold ${m.completed?'line-through text-gray-400':''}">${m.title}</p><p class="text-xs text-gray-400">${m.startTime||''}${m.endTime?'–'+m.endTime:''}</p></div><span class="text-[9px] font-bold ${m.completed?'text-teal-600':'text-gray-400'}">${m.completed?'Realizada':'Pendiente'}</span></div>`).join('')
+            ?snap.meetings.map(m=>`<div class="flex items-center gap-3 p-3 rounded-lg border ${m.completed?'border-teal-200 bg-teal-50':'border-cyan-100 bg-cyan-50'}"><span class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.completed?'bg-teal-500 text-white':'bg-gray-200 text-gray-500'}">${m.completed?'✓':'•'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold ${m.completed?'line-through text-gray-400':''}">${m.title}</p><p class="text-xs text-gray-400">${fmt12(m.startTime)||''}${m.endTime?'–'+fmt12(m.endTime):''}</p></div><span class="text-[9px] font-bold ${m.completed?'text-teal-600':'text-gray-400'}">${m.completed?'Realizada':'Pendiente'}</span></div>`).join('')
             :'<p class="text-sm text-gray-400 py-2">Sin reuniones.</p>';
 
         const savedAt=snap.savedAt?new Date(snap.savedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
@@ -781,7 +827,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                         <h2 class="text-xl font-bold text-gray-800 capitalize">${snap.dayName||formatDateDisplay(dateStr)}</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">${savedAt?'Guardado el '+savedAt:''}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${isPreview?'🟢 Planificación futura · aún no se ha guardado el registro':(savedAt?'Guardado el '+savedAt:'')}</p>
                     </div>
                     <div class="flex-shrink-0 text-right">
                         <span class="text-3xl font-black ${pctCol}">${pct}%</span>
@@ -916,7 +962,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días</h3><div class="space-y-4">`;
         let cnt=0,cd=new Date(today);
-        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));const dm=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${m.startTime}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));const dm=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${fmt12(m.startTime)}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
         dom.plannerSection.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh)}</div></div><div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar</h4><div class="flex flex-wrap gap-2">${unsched.length>0?unsched.map(t=>`<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join(''):'<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div></div><div>${renderRepetitiveChecklist(todayStr,false)}${upHtml}</div></div>`;
         updatePlannerClock();
@@ -929,7 +975,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días (Total)</h3><div class="space-y-4">`;
         let cnt=0,cd=new Date(today);
-        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);const dm=meetings.filter(m=>m.date===ds).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${m.startTime}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);const dm=meetings.filter(m=>m.date===ds).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${fmt12(m.startTime)}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
         dom.combinedPlannerContainer.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh,true)}</div></div></div><div>${renderRepetitiveChecklist(todayStr,true)}${upHtml}</div></div>`;
         updatePlannerClock();
@@ -971,7 +1017,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         const today=new Date();today.setHours(0,0,0,0);
         const tStr=today.toISOString().split('T')[0],tmStr=new Date(today.getTime()+864e5).toISOString().split('T')[0];
         const mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
-        const mkList=(title,ds)=>{const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));if(!ms.length)return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><p class="text-sm text-gray-400 mb-4">No hay reuniones.</p>`;return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><div class="space-y-2 mb-4">${ms.map(m=>`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-36 text-center flex-shrink-0"><p class="font-bold text-indigo-600 text-sm ${m.completed?'line-through text-gray-500':''}">${m.startTime}${m.endTime?' - '+m.endTime:''}</p></div><div class="border-l-2 border-indigo-500 pl-3 ml-3 flex-grow min-w-0"><p class="font-medium text-sm ${m.completed?'line-through text-gray-500':''} truncate">${m.title}</p></div><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-3 flex-shrink-0 text-blue-600 rounded" ${m.completed?'checked':''}></div>`).join('')}</div>`;};
+        const mkList=(title,ds)=>{const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));if(!ms.length)return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><p class="text-sm text-gray-400 mb-4">No hay reuniones.</p>`;return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><div class="space-y-2 mb-4">${ms.map(m=>`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-36 text-center flex-shrink-0"><p class="font-bold text-indigo-600 text-sm ${m.completed?'line-through text-gray-500':''}">${fmt12(m.startTime)}${m.endTime?' - '+fmt12(m.endTime):''}</p></div><div class="border-l-2 border-indigo-500 pl-3 ml-3 flex-grow min-w-0"><p class="font-medium text-sm ${m.completed?'line-through text-gray-500':''} truncate">${m.title}</p></div><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-3 flex-shrink-0 text-blue-600 rounded" ${m.completed?'checked':''}></div>`).join('')}</div>`;};
         dom.meetingsList.innerHTML=mkList('Reuniones de Hoy',tStr)+mkList('Reuniones de Mañana',tmStr);
         renderMtgMiniCal();
     };
@@ -994,7 +1040,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         const dr=filterMtgDP.selectedDates,mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
         const f=meetings.filter(m=>{if(!mv(m))return false;if(dr.length>0){const md=new Date(m.date+'T00:00:00');if(dr.length===1)return md.getTime()===dr[0].getTime();if(dr.length===2)return md>=dr[0]&&md<=dr[1];}return true;}).sort((a,b)=>new Date(a.date)-new Date(b.date)||a.startTime.localeCompare(b.startTime));
         const pend=f.filter(m=>!m.completed);
-        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${m.startTime||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
+        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${fmt12(m.startTime)||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
         let comp=meetings.filter(m=>m.completed&&mv(m));const sr=filters.completedMeetingSearch.toLowerCase().trim(),hdr=filters.historyMeetingDateRange;
         if(sr)comp=comp.filter(m=>m.title.toLowerCase().includes(sr));
         if(hdr.length===2)comp=comp.filter(m=>{const d=new Date(m.date+'T00:00:00');return d>=hdr[0]&&d<=hdr[1];});
@@ -1015,12 +1061,20 @@ document.addEventListener('DOMContentLoaded',()=>{
         dom.filterTagsContainer.innerHTML=`<span class="tag-filter ${!filters.tag?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="all">Todas</span>`+tags.map(t=>`<span class="tag-filter ${filters.tag===t?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="${t}">${t}</span>`).join('');
     };
     const renderSubtasksInModal=()=>{dom.subtasksList.innerHTML=currentSubtasks.map(st=>`<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted?'checked':''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted?'line-through text-gray-500':''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible||'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join('');};
+    const escHtml=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const renderCommentsInModal=()=>{
+        if(!currentComments.length){dom.commentsList.innerHTML='<p class="text-xs text-gray-400 italic">Sin comentarios todavía.</p>';return;}
+        dom.commentsList.innerHTML=currentComments.map(c=>{
+            const when=c.at?new Date(c.at).toLocaleString('es-ES',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+            return`<div class="comment-item flex items-start gap-2 p-2.5 rounded-md bg-gray-50 border border-gray-200"><div class="flex-grow min-w-0"><p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${escHtml(c.text)}</p>${when?`<p class="text-[10px] text-gray-400 mt-1">${when}</p>`:''}</div><button type="button" class="delete-comment-btn text-red-400 hover:text-red-600 text-sm flex-shrink-0" data-id="${c.id}">✖</button></div>`;
+        }).join('');
+    };
 
     // ── Modales ───────────────────────────────────────────────────────────────
     const openModal=(el,mc)=>{el.classList.remove('hidden');setTimeout(()=>{el.classList.remove('opacity-0');mc?.classList.remove('scale-95');},10);};
     const closeModal=(el,mc,cb)=>{el.classList.add('opacity-0');mc?.classList.add('scale-95');setTimeout(()=>{el.classList.add('hidden');cb?.();},300);};
     const openTaskModal=()=>openModal(dom.taskModal,dom.modalContent);
-    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
+    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];currentComments=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
     const openEditTaskModal=(task,initialTime=null)=>{
         dom.taskForm.reset();populateModalSelects();
         const isRep=!!task.isRepetitive;dom.isRepetitiveCheckbox.checked=isRep;
@@ -1028,18 +1082,18 @@ document.addEventListener('DOMContentLoaded',()=>{
             dom.modalTitle.innerText='Editar Tarea';dom.taskForm.taskId.value=task.id;dom.taskForm.taskType.value=task.type||'laboral';dom.taskForm.description.value=task.description;dom.taskForm.taskSize.value=task.taskSize||'Mediana';dom.taskForm.importance.value=task.isImportant;dom.taskForm.urgency.value=task.isUrgent;dom.taskForm.isDelegated.checked=task.isDelegated;dom.taskForm.progress.value=task.progress||0;dom.progressLabel.textContent=`${task.progress||0}%`;
             if(task.dueDate)dueDatepicker.setDate(task.dueDate);
             if(task.plannedDate){plannedDatepicker.setDate(task.plannedDate);dom.timeContainerModal.classList.remove('hidden');if(task.startTime)startTP.setDate(task.startTime);if(task.endTime)endTP.setDate(task.endTime);}else dom.timeContainerModal.classList.add('hidden');
-            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));dom.deleteTaskBtn.classList.remove('hidden');
+            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));currentComments=JSON.parse(JSON.stringify(task.comments||[]));dom.deleteTaskBtn.classList.remove('hidden');
         }else{
-            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
+            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];currentComments=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
             if(initialTime){const ts=new Date().toISOString().split('T')[0];dueDatepicker.setDate(ts);plannedDatepicker.setDate(ts);startTP.setDate(initialTime);const[h,m]=initialTime.split(':').map(Number),eh=h+1;endTP.setDate(`${eh<10?'0'+eh:eh}:${m<10?'0'+m:m}`);dom.timeContainerModal.classList.remove('hidden');}
         }
         dom.dateControlsContainer.classList.toggle('hidden',isRep);dom.delegatedContainer.classList.toggle('hidden',isRep);dom.progressContainerModal.classList.toggle('hidden',isRep);
         dom.plannedDateContainer.style.display=(dom.taskForm.isDelegated.checked||isRep)?'none':'block';
-        renderSubtasksInModal();openTaskModal();
+        renderSubtasksInModal();renderCommentsInModal();openTaskModal();
     };
     const saveTask=e=>{
         e.preventDefault();const id=dom.taskForm.taskId.value,selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value),isRep=dom.isRepetitiveCheckbox.checked;
-        const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks]};
+        const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks],comments:[...currentComments]};
         if(id)td.progress=parseInt(dom.taskForm.progress.value,10);
         const fin={...(id?tasks.find(t=>t.id===id):{}),...td};
         if(!id){fin.id=Date.now().toString();fin.progress=0;fin.completedDates=[];}
@@ -1049,6 +1103,13 @@ document.addEventListener('DOMContentLoaded',()=>{
     const openMeetingModal=()=>openModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'));
     const closeMeetingModal=()=>closeModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'),()=>{dom.meetingForm.reset();dom.meetingForm.meetingId.value='';dom.deleteMeetingBtn.classList.add('hidden');meetingDatepicker.clear();mtgStartTP.clear();mtgEndTP.clear();});
     const openEditMeetingModal=m=>{dom.meetingForm.reset();if(m?.id){dom.meetingModalTitle.innerText='Editar Reunión';dom.meetingForm.meetingId.value=m.id;dom.meetingForm.meetingType.value=m.type||'laboral';dom.meetingForm.meetingTitle.value=m.title;meetingDatepicker.setDate(m.date);if(m.startTime){mtgStartTP.setDate(m.startTime);mtgEndTP.setDate(m.endTime);}dom.deleteMeetingBtn.classList.remove('hidden');}else{dom.meetingModalTitle.innerText='Nueva Reunión';dom.meetingForm.meetingId.value='';dom.meetingForm.meetingType.value=currentView;dom.deleteMeetingBtn.classList.add('hidden');}openMeetingModal();};
+    const openNewMeetingAt=timeStr=>{
+        openEditMeetingModal({});
+        meetingDatepicker.setDate(todayStrLocal());
+        if(timeStr){const p=timeStr.split(':');const h=Number(p[0]),m=Number(p[1]);mtgStartTP.setDate(timeStr);const eh2=Math.min(h+1,23);mtgEndTP.setDate(`${String(eh2).padStart(2,'0')}:${String(m).padStart(2,'0')}`);}
+    };
+    const openSlotChoice=timeStr=>{pendingSlotTime=timeStr||null;dom.slotChoiceTime.textContent=timeStr?('A las '+fmt12(timeStr)):'';openModal(dom.slotChoiceModal,dom.slotChoiceModal.querySelector('.modal-content'));};
+    const closeSlotChoice=()=>closeModal(dom.slotChoiceModal,dom.slotChoiceModal.querySelector('.modal-content'));
     const saveMeeting=e=>{e.preventDefault();const id=dom.meetingForm.meetingId.value,st=dom.meetingForm.meetingStartTime.value,et=dom.meetingForm.meetingEndTime.value;if(st&&et&&parseTime(et)<=parseTime(st)){alert('La hora de fin debe ser posterior.');return;}const md={type:dom.meetingForm.meetingType.value,title:dom.meetingForm.meetingTitle.value,date:dom.meetingForm.meetingDate.value,startTime:st,endTime:et};if(id)meetings[meetings.findIndex(m=>m.id===id)]={...meetings.find(m=>m.id===id),...md};else meetings.push({id:Date.now().toString(),completed:false,...md});saveData();renderAll();closeMeetingModal();};
     const openScheduleModal=tid=>{const task=tasks.find(t=>t.id===tid);if(!task)return;dom.scheduleForm.scheduleTaskId.value=tid;dom.scheduleTaskDescription.textContent=task.description;schStartTP.clear();schEndTP.clear();openModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'));};
     const closeScheduleModal=()=>closeModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'),()=>dom.scheduleForm.reset());
@@ -1093,6 +1154,12 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.toggleAllCompletedMeetings.addEventListener('click',()=>{filters.showAllCompletedMeetings=!filters.showAllCompletedMeetings;renderAllMeetingsList();});
     dom.scheduleForm.addEventListener('submit',saveScheduleTime);
     dom.closeScheduleModalBtn.addEventListener('click',closeScheduleModal);
+    dom.slotChoiceTask.addEventListener('click',()=>{const tm=pendingSlotTime;closeSlotChoice();openEditTaskModal({},tm);});
+    dom.slotChoiceMeeting.addEventListener('click',()=>{const tm=pendingSlotTime;closeSlotChoice();openNewMeetingAt(tm);});
+    dom.slotChoiceCancel.addEventListener('click',closeSlotChoice);
+    dom.slotChoiceModal.addEventListener('click',e=>{if(e.target===dom.slotChoiceModal)closeSlotChoice();});
+    dom.addCommentBtn.addEventListener('click',()=>{const t=dom.newCommentText.value.trim();if(!t)return;currentComments.push({id:Date.now().toString(),text:t,at:new Date().toISOString()});dom.newCommentText.value='';renderCommentsInModal();});
+    dom.commentsList.addEventListener('click',e=>{const b=e.target.closest('.delete-comment-btn');if(b){currentComments=currentComments.filter(c=>c.id!==b.dataset.id);renderCommentsInModal();}});
     dom.pomodoroModeBtn.addEventListener('click',()=>switchTimerMode('pomodoro'));
     dom.shortBreakModeBtn.addEventListener('click',()=>switchTimerMode('shortBreak'));
     dom.longBreakModeBtn.addEventListener('click',()=>switchTimerMode('longBreak'));
@@ -1118,13 +1185,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     filterDatepicker.config.onChange.push(()=>renderAllTasksList());
     filterMtgDP.config.onChange.push(()=>renderAllMeetingsList());
     dom.plannerSection.addEventListener('click',e=>{
-        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
-        const ut=e.target.closest('.unscheduled-task');if(ut)openScheduleModal(ut.dataset.id);
-        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
-        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
+        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);return;}
+        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}return;}
+        const ut=e.target.closest('.unscheduled-task');if(ut){openScheduleModal(ut.dataset.id);return;}
+        const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);e.stopPropagation();return;}
+        const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);e.stopPropagation();return;}
+        const ts=e.target.closest('.time-slot');if(ts)openSlotChoice(ts.dataset.time);
     });
     dom.combinedPlannerContainer.addEventListener('click',e=>{
-        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
+        const ts=e.target.closest('.time-slot');if(ts){openSlotChoice(ts.dataset.time);return;}
         const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);}
         const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);}
         const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
