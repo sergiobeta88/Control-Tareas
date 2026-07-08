@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -48,10 +50,6 @@
         .hist-cal-day:hover:not(.empty) { background:#e0e7ff !important; }
         .hist-cal-day.has-snap { background:#dbeafe !important; color:#1d4ed8 !important; font-weight:700 !important; }
         .hist-cal-day.has-snap:hover { background:#bfdbfe !important; }
-        .hist-cal-day.has-future { background:#dcfce7 !important; color:#166534 !important; font-weight:700 !important; }
-        .hist-cal-day.has-future:hover { background:#bbf7d0 !important; }
-        .future-dot { position:absolute !important; bottom:2px !important; left:50% !important; transform:translateX(-50%) !important; width:3px !important; height:3px !important; border-radius:50% !important; background:#16a34a !important; }
-        .hist-cal-day.selected .future-dot { background:white !important; }
         .hist-cal-day.selected { background:#3b82f6 !important; color:white !important; border-radius:50% !important; }
         .hist-cal-day.today-mark { box-shadow:inset 0 0 0 2px #f97316 !important; border-radius:50% !important; }
         .hist-cal-day.empty { cursor:default !important; opacity:0 !important; pointer-events:none !important; }
@@ -66,14 +64,13 @@
         .hist-day-row { transition:all .15s; }
         .hist-day-row:hover { background:#f0f4ff; }
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
-        /* Mini-calendario reuniones */
-        .mtg-cal-month { margin-bottom:8px; }
-        .mtg-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:1px; }
-        .mtg-cal-cell { text-align:center; padding:2px 0; border-radius:4px; font-size:9px; line-height:18px; cursor:default; }
-        .mtg-cal-cell.has-mtg { background:#c7d2fe; color:#3730a3; font-weight:700; cursor:pointer; border-radius:50%; }
-        .mtg-cal-cell.has-mtg:hover { background:#818cf8; color:white; }
-        .mtg-cal-cell.today-mtg { box-shadow:inset 0 0 0 1.5px #f97316; border-radius:50%; }
-        .mtg-cal-cell.empty { opacity:0; pointer-events:none; }
+        /* ── Google Calendar ──────────────────────────────── */
+        #gcal-status.gcal-connected { background-color:#d1fae5;color:#065f46;border-color:#6ee7b7; }
+        #gcal-status.gcal-disconnected { background-color:#f3f4f6;color:#374151;border-color:#d1d5db; }
+        #gcal-status.gcal-loading { background-color:#fef3c7;color:#92400e;border-color:#fcd34d; }
+        .gcal-badge { background:#34a853;color:white;font-size:8px;font-weight:700;padding:1px 5px;border-radius:99px;vertical-align:middle; }
+        .gcal-event-card { border-left:3px solid #34a853 !important; }
+
     </style>
 </head>
 <body class="text-gray-800">
@@ -82,17 +79,21 @@
     <header class="text-center mb-6">
         <h1 class="text-4xl font-bold text-gray-900">Panel de Productividad</h1>
         <p class="text-lg text-gray-600 mt-2">Organiza tus tareas con la Matriz de Eisenhower y planifica tu semana.</p>
-        <div class="flex justify-center mt-3">
+        <div class="flex justify-center gap-3 mt-3 flex-wrap">
             <div id="fb-status" class="connecting inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border">
                 <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
                 <span id="fb-status-text">Conectando...</span>
+            </div>
+            <div id="gcal-status" class="gcal-disconnected inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border cursor-pointer" onclick="window._gcalToggle && window._gcalToggle()" title="Conectar Google Calendar">
+                <span>📅</span>
+                <span id="gcal-status-text">Google Calendar</span>
             </div>
         </div>
     </header>
 
     <nav class="flex justify-center border-b-2 border-gray-200 mb-8 overflow-x-auto whitespace-nowrap">
         <button id="show-combined-planner-btn" class="py-4 px-6 block text-blue-600 border-b-2 border-blue-600 font-medium">Cronograma Combinado</button>
-        <button id="show-history-btn"          class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600 flex items-center gap-1.5">📅 Historial</button>
+        <button id="show-history-btn"          class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600 flex items-center gap-1.5">📅 Historial <span id="hist-badge" class="hidden bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full"></span></button>
         <button id="show-dashboard-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Panel Principal</button>
         <button id="show-all-tasks-btn"        class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Tareas</button>
         <button id="show-all-meetings-btn"     class="py-4 px-6 block text-gray-500 font-medium hover:text-blue-600">Todas las Reuniones</button>
@@ -131,7 +132,6 @@
                     <div id="hist-cal-days"></div>
                     <div class="flex gap-2 mt-2 text-[9px] text-gray-400 justify-center flex-wrap">
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-100 border border-blue-300 rounded-sm inline-block"></span>Con registro</span>
-                        <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-green-100 border border-green-400 rounded-sm inline-block"></span>Planificado</span>
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 bg-blue-500 rounded-full inline-block"></span>Seleccionado</span>
                         <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full border-2 border-orange-400 inline-block"></span>Hoy</span>
                     </div>
@@ -141,6 +141,7 @@
                 <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                     <div class="px-4 py-3 border-b bg-gray-50 flex items-center justify-between">
                         <h3 class="font-bold text-gray-700 text-sm">Registros guardados</h3>
+                        <span id="hist-count-label" class="text-xs text-gray-400"></span>
                     </div>
                     <div id="hist-days-list" class="divide-y divide-gray-100 max-h-72 overflow-y-auto">
                         <p id="hist-list-empty" class="text-center text-gray-400 text-xs py-6 px-4">No hay registros todavía.<br>Se guardan automáticamente a medianoche.</p>
@@ -170,7 +171,7 @@
         </div>
         <div class="flex flex-wrap justify-center gap-3 mb-8">
             <button id="openModalBtn" class="bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-blue-700 transition">+ Nueva Tarea</button>
-            <button id="add-meeting-btn" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-indigo-700 transition">+ Nueva Reunión</button>
+            <button id="openModalMeetingDash" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-indigo-700 transition">+ Nueva Reunión</button>
             <div class="flex gap-3">
                 <label for="import-file" class="bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-gray-700 transition cursor-pointer">↑ Importar</label>
                 <input type="file" id="import-file" class="hidden" accept=".json">
@@ -180,17 +181,11 @@
         <div class="mb-12">
             <h2 class="text-2xl font-bold text-center mb-6">Monitor de Reuniones</h2>
             <div id="meetings-monitor" class="bg-white p-6 rounded-lg shadow-lg">
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <!-- Mini calendario de reuniones -->
-                    <div class="lg:col-span-1">
-                        <h3 class="text-base font-bold text-gray-700 mb-3">Calendario de Reuniones</h3>
-                        <div id="mtg-mini-cal" class="bg-gray-50 rounded-lg border border-gray-200 p-3 text-xs"></div>
-                    </div>
-                    <!-- Lista próximas reuniones -->
-                    <div class="lg:col-span-2">
-                        <div id="meetings-list" class="space-y-4"></div>
-                    </div>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-gray-800">Próximas Reuniones</h3>
+                    <button id="add-meeting-btn" class="hidden"></button>
                 </div>
+                <div id="meetings-list" class="space-y-4"></div>
             </div>
         </div>
         <h2 class="text-2xl font-bold text-center mb-2">Matriz de Prioridades</h2>
@@ -309,14 +304,6 @@
                     <button type="button" id="add-subtask-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Añadir</button>
                 </div>
             </div>
-            <div class="border-t pt-4 mt-6">
-                <h3 class="text-lg font-medium mb-3">Comentarios</h3>
-                <div id="comments-list" class="space-y-2 mb-3"></div>
-                <div class="flex flex-col sm:flex-row gap-2">
-                    <textarea id="new-comment-text" rows="2" placeholder="Escribe un comentario..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"></textarea>
-                    <button type="button" id="add-comment-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 sm:self-start">Añadir</button>
-                </div>
-            </div>
             <div class="flex justify-end gap-3 mt-8">
                 <button type="button" id="deleteTaskBtn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
                 <button type="button" id="closeModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
@@ -365,18 +352,6 @@
     </div>
 </div>
 
-<div id="slotChoiceModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
-    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-xs transform scale-95 text-center">
-        <h2 class="text-xl font-bold mb-1">¿Qué deseas crear?</h2>
-        <p id="slot-choice-time" class="text-sm text-gray-500 mb-6"></p>
-        <div class="flex flex-col gap-3">
-            <button type="button" id="slot-choice-task" class="bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-md hover:bg-blue-700 transition">📝 Nueva Tarea</button>
-            <button type="button" id="slot-choice-meeting" class="bg-indigo-600 text-white font-semibold py-2.5 px-4 rounded-md hover:bg-indigo-700 transition">📅 Nueva Reunión</button>
-            <button type="button" id="slot-choice-cancel" class="text-gray-500 text-sm font-medium py-1 hover:text-gray-700">Cancelar</button>
-        </div>
-    </div>
-</div>
-
 <div id="tagManagementModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
     <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-md transform scale-95">
         <h2 class="text-2xl font-bold mb-6">Administrar Etiquetas</h2>
@@ -387,34 +362,6 @@
 
 <div id="notification-toast" class="fixed bottom-28 right-5 bg-gray-800 text-white py-3 px-5 rounded-lg shadow-xl opacity-0 transform translate-y-10 z-50">
     <p id="notification-message"></p>
-</div>
-
-<!-- ══ PANTALLA DE LOGIN ══ -->
-<div id="login-screen" class="fixed inset-0 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center z-[9999]">
-    <div class="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-sm text-center">
-        <div class="mb-6">
-            <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg class="w-9 h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            </div>
-            <h1 class="text-2xl font-bold text-gray-900">Panel de Productividad</h1>
-            <p class="text-sm text-gray-500 mt-1">Inicia sesión para continuar</p>
-        </div>
-        <button id="google-signin-btn" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition text-gray-700 font-semibold py-3 px-6 rounded-xl shadow-sm">
-            <svg class="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-            Continuar con Google
-        </button>
-        <div id="login-error" class="hidden mt-4 text-sm text-red-600 bg-red-50 rounded-lg p-3"></div>
-        <div id="login-loading" class="hidden mt-4 text-sm text-gray-500 flex items-center justify-center gap-2">
-            <svg class="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
-            Verificando acceso...
-        </div>
-        <!-- Panel UID (visible solo la primera vez, hasta configurar las reglas) -->
-        <div id="uid-panel" class="hidden mt-5 bg-amber-50 border border-amber-200 rounded-xl p-4 text-left">
-            <p class="text-xs font-bold text-amber-800 mb-1">⚠ Tu UID de Firebase (cópialo para las reglas):</p>
-            <code id="uid-display" class="block text-[11px] text-amber-900 font-mono break-all bg-amber-100 rounded p-2 select-all"></code>
-            <p class="text-[10px] text-amber-600 mt-2">Una vez que configures las Firestore Rules con este UID, este panel desaparecerá.</p>
-        </div>
-    </div>
 </div>
 
 <div id="floating-timer-container" class="fixed bottom-5 right-5 bg-white p-2.5 rounded-lg shadow-xl w-40 z-40">
@@ -433,111 +380,20 @@
 
 <!-- Firebase -->
 <script type="module">
-    import { initializeApp }                              from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
     import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
-                                                          from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
-
     const cfg = { apiKey:"AIzaSyAZZVxx8cWgrZS5NV1B1sxrKFA8TbQB0-c", authDomain:"control-tareas-85ddc.firebaseapp.com", projectId:"control-tareas-85ddc", storageBucket:"control-tareas-85ddc.firebasestorage.app", messagingSenderId:"319188644784", appId:"1:319188644784:web:8d567089d8eb472d009c75" };
-
-    const app  = initializeApp(cfg);
-    const db   = getFirestore(app);
-    const auth = getAuth(app);
-
-    const REF  = doc(db,"productividad","datos");
-    const HREF = doc(db,"productividad","historial");
-
-    // ── UID autorizado ────────────────────────────────────────────────────────
-    // Después de hacer login por primera vez, copia tu UID del panel amarillo
-    // y pégalo aquí entre las comillas. Luego sube el archivo a GitHub.
-    const AUTHORIZED_UIDS = ["H8Z6S3JZnCbmX2YweSyYUDNzWRl1", "l689xXSMhgToHJqsoiiQD5xU7l42"];
-
-    // ── UI helpers ────────────────────────────────────────────────────────────
-    const loginScreen  = document.getElementById('login-screen');
-    const signinBtn    = document.getElementById('google-signin-btn');
-    const loginError   = document.getElementById('login-error');
-    const loginLoading = document.getElementById('login-loading');
-    const uidPanel     = document.getElementById('uid-panel');
-    const uidDisplay   = document.getElementById('uid-display');
-
-    const showError = msg => { loginError.textContent=msg; loginError.classList.remove('hidden'); loginLoading.classList.add('hidden'); };
-    const showLoading = () => { loginLoading.classList.remove('hidden'); loginError.classList.add('hidden'); signinBtn.disabled=true; };
-    const hideLoading = () => { loginLoading.classList.add('hidden'); signinBtn.disabled=false; };
-
-    // ── Botón de cerrar sesión (se inyecta en el header) ──────────────────────
-    const addSignOutBtn = user => {
-        if(document.getElementById('signout-btn')) return;
-        const hdr = document.querySelector('header');
-        if(!hdr) return;
-        const btn = document.createElement('button');
-        btn.id = 'signout-btn';
-        btn.className = 'mt-2 text-xs text-gray-400 hover:text-red-500 transition';
-        btn.innerHTML = `👤 ${user.displayName||user.email} &nbsp;·&nbsp; <span class="underline">Cerrar sesión</span>`;
-        btn.onclick = () => signOut(auth);
-        hdr.appendChild(btn);
+    const db=getFirestore(initializeApp(cfg)), REF=doc(db,"productividad","datos"), HREF=doc(db,"productividad","historial");
+    window._fbAPI={
+        save:     async d=>{ await setDoc(REF,d); },
+        load:     async ()=>{ const s=await getDoc(REF); return s.exists()?s.data():null; },
+        subscribe:cb=>onSnapshot(REF,s=>{ if(s.exists()) cb(s.data()); }),
+        saveHistory:async d=>{ await setDoc(HREF,d); },
+        loadHistory:async ()=>{ const s=await getDoc(HREF); return s.exists()?s.data():null; },
+        subscribeHistory:cb=>onSnapshot(HREF,s=>{ if(s.exists()) cb(s.data()); }),
     };
-
-    // ── Login con Google ──────────────────────────────────────────────────────
-    signinBtn.addEventListener('click', async () => {
-        showLoading();
-        try {
-            await signInWithPopup(auth, new GoogleAuthProvider());
-        } catch(e) {
-            showError('No se pudo iniciar sesión. Intenta de nuevo.');
-            hideLoading();
-        }
-    });
-
-    // ── Auth state ────────────────────────────────────────────────────────────
-    onAuthStateChanged(auth, user => {
-        if (!user) {
-            // No autenticado → mostrar pantalla de login
-            loginScreen.classList.remove('hidden');
-            hideLoading();
-            window._fbReady = false;
-            return;
-        }
-
-        // Autenticado → verificar si está autorizado
-        showLoading();
-
-        // Si aún no se ha configurado el UID autorizado, mostrar panel de ayuda
-        if (!AUTHORIZED_UIDS || AUTHORIZED_UIDS.length === 0) {
-            uidPanel.classList.remove('hidden');
-            uidDisplay.textContent = user.uid;
-            loginScreen.classList.remove('hidden');
-            hideLoading();
-            // Aún así dejar entrar (modo configuración inicial)
-            loginScreen.classList.add('hidden');
-            bootApp(user);
-            return;
-        }
-
-        if (!AUTHORIZED_UIDS.includes(user.uid)) {
-            signOut(auth);
-            showError('Acceso no autorizado. Esta aplicación es de uso privado.');
-            hideLoading();
-            return;
-        }
-
-        // ✅ Usuario correcto
-        loginScreen.classList.add('hidden');
-        bootApp(user);
-    });
-
-    function bootApp(user) {
-        addSignOutBtn(user);
-        window._fbAPI = {
-            save:             async d  => { await setDoc(REF, d); },
-            load:             async () => { const s=await getDoc(REF);  return s.exists()?s.data():null; },
-            subscribe:        cb       => onSnapshot(REF,  s=>{ if(s.exists()) cb(s.data()); }),
-            saveHistory:      async d  => { await setDoc(HREF, d); },
-            loadHistory:      async () => { const s=await getDoc(HREF); return s.exists()?s.data():null; },
-            subscribeHistory: cb       => onSnapshot(HREF, s=>{ if(s.exists()) cb(s.data()); }),
-        };
-        window._fbReady = true;
-        window.dispatchEvent(new CustomEvent("fbReady"));
-    }
+    window._fbReady=true;
+    window.dispatchEvent(new CustomEvent("fbReady"));
 </script>
 
 <script>
@@ -545,7 +401,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // ── Firebase ─────────────────────────────────────────────────────────────
     const setStatus=(state,text)=>{ const el=document.getElementById('fb-status'),tx=document.getElementById('fb-status-text'); el.className=`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${state}`; tx.textContent=text; };
-    const fbSave=async data=>{ if(window._fbAPI){ try{ await window._fbAPI.save(data); setStatus('connected','☁ Guardado'); ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]))); }catch(e){ setStatus('offline','⚠ Error'); ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]))); } } else { ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]))); } };
+    const fbSave=async data=>{ ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]))); if(window._fbAPI){ try{ await window._fbAPI.save(data); setStatus('connected','☁ Guardado'); }catch(e){ setStatus('offline','⚠ Error'); } } };
     const fbSaveHistory=async h=>{ localStorage.setItem('dailyHistory',JSON.stringify(h)); if(window._fbAPI){ try{ await window._fbAPI.saveHistory(h); }catch(e){} } };
     const fbLoadHistory=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.loadHistory(); if(d?.snapshots){ localStorage.setItem('dailyHistory',JSON.stringify(d)); return d; } }catch(e){} } return JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}}; };
     const fbLoad=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.load(); if(d&&Array.isArray(d.tasks)){ ['tasks','meetings','allTags','allResponsibles'].forEach(k=>localStorage.setItem(k,JSON.stringify(d[k]||[]))); setStatus('connected','☁ Conectado'); return d; } }catch(e){ setStatus('offline','⚠ Sin conexión'); } } return { tasks:JSON.parse(localStorage.getItem('tasks'))||[], meetings:JSON.parse(localStorage.getItem('meetings'))||[], allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]}, allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]} }; };
@@ -565,6 +421,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         histPrevMonth:$('hist-prev-month'), histNextMonth:$('hist-next-month'),
         histDetailPlaceholder:$('hist-detail-placeholder'), histDetailContent:$('hist-detail-content'),
         histDaysList:$('hist-days-list'), histListEmpty:$('hist-list-empty'),
+        histCountLabel:$('hist-count-label'), histBadge:$('hist-badge'),
         taskModal:$('taskModal'), modalContent:$('modal-content'),
         openModalBtn:$('openModalBtn'), closeModalBtn:$('closeModalBtn'),
         taskForm:$('taskForm'), deleteTaskBtn:$('deleteTaskBtn'),
@@ -600,16 +457,12 @@ document.addEventListener('DOMContentLoaded',()=>{
         filterMeetingDate:$('filter-meeting-date'), manageTagsBtn:$('manage-tags-btn'),
         tagManagementModal:$('tagManagementModal'), tagManagementList:$('tag-management-list'),
         closeTagManagementModalBtn:$('closeTagManagementModalBtn'), openModalBtnAllTasks:$('openModalBtnAllTasks'),
-        slotChoiceModal:$('slotChoiceModal'), slotChoiceTime:$('slot-choice-time'),
-        slotChoiceTask:$('slot-choice-task'), slotChoiceMeeting:$('slot-choice-meeting'),
-        slotChoiceCancel:$('slot-choice-cancel'),
-        commentsList:$('comments-list'), newCommentText:$('new-comment-text'), addCommentBtn:$('add-comment-btn'),
     };
 
     // ── Estado ───────────────────────────────────────────────────────────────
     let tasks=[],meetings=[],allTags={laboral:[],personal:[]},allResponsibles={laboral:[],personal:[]};
     let dailyHistory={snapshots:{}};
-    let currentSubtasks=[],currentComments=[],pendingSlotTime=null,filters={importance:'all',urgency:'all',tag:null,dateRange:[],responsible:'all',completedTaskSearch:'',completedMeetingSearch:'',showAllCompletedTasks:false,showAllCompletedMeetings:false,historyTaskDateRange:[],historyMeetingDateRange:[]};
+    let currentSubtasks=[],filters={importance:'all',urgency:'all',tag:null,dateRange:[],responsible:'all',completedTaskSearch:'',completedMeetingSearch:'',showAllCompletedTasks:false,showAllCompletedMeetings:false,historyTaskDateRange:[],historyMeetingDateRange:[]};
     let firedAlerts=new Set(),currentView='laboral',fbUnsubscribe=null;
     let histCalYear=new Date().getFullYear(),histCalMonth=new Date().getMonth(),histSelectedDate=null;
 
@@ -621,8 +474,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     const fpL={firstDayOfWeek:1,weekdays:{shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"]},months:{shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]}};
     const fpB={dateFormat:"Y-m-d",altInput:true,altFormat:"D, M j, Y",locale:fpL};
     const fpT={enableTime:true,noCalendar:true,dateFormat:"H:i",time_24hr:true,minuteIncrement:15};
-    // Devuelve una nueva fecha sumando una hora (para fijar la hora de fin por defecto)
-    const plusHour=d=>{const n=new Date(d);n.setHours(n.getHours()+1);return n;};
     const dueDatepicker    =flatpickr("#dueDate",fpB);
     const plannedDatepicker=flatpickr("#plannedDate",{...fpB,onChange(sd){dom.timeContainerModal.classList.toggle('hidden',!sd.length);if(!sd.length){startTP.clear();endTP.clear();}}});
     const filterDatepicker =flatpickr("#filter-date",{...fpB,mode:"range",onChange:[]});
@@ -630,26 +481,16 @@ document.addEventListener('DOMContentLoaded',()=>{
     const meetingDatepicker=flatpickr("#meetingDate",{...fpB,onChange:[]});
     const histTaskDP       =flatpickr("#filter-history-task-date",{...fpB,mode:"range",onChange:d=>{filters.historyTaskDateRange=d;renderAllTasksList();}});
     const histMtgDP        =flatpickr("#filter-history-meeting-date",{...fpB,mode:"range",onChange:d=>{filters.historyMeetingDateRange=d;renderAllMeetingsList();}});
-    const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(plusHour(sd[0]),false);mtgEndTP.set('minTime',ds);}}});
+    const mtgStartTP       =flatpickr("#meetingStartTime",{...fpT,time_24hr:false,onChange(sd,ds){if(sd.length){mtgEndTP.setDate(sd[0],false);mtgEndTP.set('minTime',ds);}}});
     const mtgEndTP         =flatpickr("#meetingEndTime",{...fpT,time_24hr:false});
-    const startTP          =flatpickr("#startTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)endTP.setDate(plusHour(sd[0]),false);}});
-    const endTP            =flatpickr("#endTime",{...fpT,time_24hr:false});
-    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,time_24hr:false,onChange(sd){if(sd.length)schEndTP.setDate(plusHour(sd[0]),false);}});
-    const schEndTP         =flatpickr("#scheduleEndTime",{...fpT,time_24hr:false});
+    const startTP          =flatpickr("#startTime",{...fpT,onChange(sd){if(sd.length)endTP.setDate(sd[0],false);}});
+    const endTP            =flatpickr("#endTime",fpT);
+    const schStartTP       =flatpickr("#scheduleStartTime",{...fpT,onChange(sd){if(sd.length)schEndTP.setDate(sd[0],false);}});
+    const schEndTP         =flatpickr("#scheduleEndTime",fpT);
     const rescheduleDP     =flatpickr(document.createElement('input'),{...fpB,onChange:[]});
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const parseTime=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h+m/60;};
-    // Convierte "HH:MM" (24h) a formato 12 horas con AM/PM, p.ej. "14:30" -> "2:30 PM"
-    const fmt12=t=>{if(!t)return'';const p=t.split(':');const h=Number(p[0]),m=Number(p[1]);if(isNaN(h)||isNaN(m))return t;const ap=h>=12?'PM':'AM';let hh=h%12;if(hh===0)hh=12;return `${hh}:${String(m).padStart(2,'0')} ${ap}`;};
-    const todayStrLocal=()=>new Date().toISOString().split('T')[0];
-    // Conjunto de fechas (hoy o futuras) que tienen tareas o reuniones planificadas
-    const getPlannedFutureDates=()=>{
-        const t0=todayStrLocal();const set=new Set();
-        tasks.forEach(t=>{if(t.plannedDate&&!t.isRepetitive&&t.plannedDate>=t0)set.add(t.plannedDate);});
-        meetings.forEach(m=>{if(m.date&&m.date>=t0)set.add(m.date);});
-        return set;
-    };
     const formatDateDisplay=s=>{if(!s)return'N/A';return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'});};
     const updatePlannerClock=()=>{
         const now=new Date();
@@ -694,7 +535,11 @@ document.addEventListener('DOMContentLoaded',()=>{
             scheduleMidnightSnapshot();
         },midnight-now);
     };
-    const updateHistBadge=()=>{ /* contador eliminado: el número podía crecer demasiado */ };
+    const updateHistBadge=()=>{
+        const n=Object.keys(dailyHistory.snapshots).length;
+        if(n>0){dom.histBadge.textContent=n;dom.histBadge.classList.remove('hidden');}
+        else dom.histBadge.classList.add('hidden');
+    };
 
     // ── Calendario ────────────────────────────────────────────────────────────
     const renderHistCalendar=()=>{
@@ -709,7 +554,6 @@ document.addEventListener('DOMContentLoaded',()=>{
         const MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
         dom.histMonthLabel.textContent=`${MONTHS[histCalMonth]} ${histCalYear}`;
         const today=new Date().toISOString().split('T')[0];
-        const plannedDates=getPlannedFutureDates();
         const startWd=(new Date(histCalYear,histCalMonth,1).getDay()+6)%7;
         const daysInMonth=new Date(histCalYear,histCalMonth+1,0).getDate();
         let html='';
@@ -717,16 +561,12 @@ document.addEventListener('DOMContentLoaded',()=>{
         for(let d=1;d<=daysInMonth;d++){
             const ds=`${histCalYear}-${String(histCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
             const hasSnap=!!dailyHistory.snapshots[ds];
-            const hasFuture=!hasSnap&&plannedDates.has(ds);
             const isToday=ds===today,isSel=ds===histSelectedDate;
             let cls='hist-cal-day';
             if(hasSnap) cls+=' has-snap';
-            if(hasFuture) cls+=' has-future';
             if(isToday) cls+=' today-mark';
             if(isSel) cls+=' selected';
-            let dot='';
-            if(hasSnap&&!isSel)dot='<div class="snap-dot"></div>';
-            else if(hasFuture&&!isSel)dot='<div class="future-dot"></div>';
+            const dot=hasSnap&&!isSel?'<div class="snap-dot"></div>':'';
             html+=`<div class="${cls}" data-date="${ds}">${d}${dot}</div>`;
         }
         dom.histCalDays.innerHTML=html;
@@ -735,29 +575,25 @@ document.addEventListener('DOMContentLoaded',()=>{
     // ── Lista lateral de días ─────────────────────────────────────────────────
     const renderHistDaysList=()=>{
         const snaps=Object.values(dailyHistory.snapshots).sort((a,b)=>b.dateStr.localeCompare(a.dateStr));
-        // Días futuros (u hoy) con planificación y sin registro guardado todavía
-        const planned=[...getPlannedFutureDates()].filter(ds=>!dailyHistory.snapshots[ds]).sort();
-        if(!snaps.length&&!planned.length){ dom.histListEmpty.classList.remove('hidden'); dom.histDaysList.innerHTML=''; dom.histDaysList.appendChild(dom.histListEmpty); return; }
+        const n=snaps.length;
+        dom.histCountLabel.textContent=n>0?`${n} registro${n>1?'s':''}`:'' ;
+        if(!n){ dom.histListEmpty.classList.remove('hidden'); return; }
         dom.histListEmpty.classList.add('hidden');
-        const rowHtml=(s,isPlanned)=>{
+        dom.histDaysList.innerHTML=snaps.map(s=>{
             const pct=s.completionPct||0;
             const barCol=pct>=80?'bg-green-400':pct>=50?'bg-yellow-400':'bg-red-400';
             const isActive=s.dateStr===histSelectedDate;
-            const plannedTag=isPlanned?`<span class="text-[8px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full flex-shrink-0">Planificado</span>`:'';
-            return`<div class="hist-day-row px-4 py-2.5 cursor-pointer ${isActive?'active-row':''} ${isPlanned?'border-l-2 border-green-300':''}" data-date="${s.dateStr}">
+            return`<div class="hist-day-row px-4 py-2.5 cursor-pointer ${isActive?'active-row':''}" data-date="${s.dateStr}">
                 <div class="flex items-center justify-between gap-2">
                     <div class="min-w-0">
-                        <p class="text-xs font-semibold text-gray-800 truncate capitalize flex items-center gap-1.5">${s.dayName||formatDateDisplay(s.dateStr)} ${plannedTag}</p>
+                        <p class="text-xs font-semibold text-gray-800 truncate capitalize">${s.dayName||formatDateDisplay(s.dateStr)}</p>
                         <p class="text-[10px] text-gray-400">${s.stats.completedTasks}/${s.stats.totalTasks} tareas · ${s.stats.doneMeetings}/${s.stats.totalMeetings} reuniones</p>
                     </div>
                     <span class="text-xs font-bold flex-shrink-0 ${pct>=80?'text-green-600':pct>=50?'text-yellow-600':'text-red-500'}">${pct}%</span>
                 </div>
                 <div class="pct-bar-wrap mt-1.5"><div class="pct-bar ${barCol}" style="width:${pct}%"></div></div>
             </div>`;
-        };
-        const plannedHtml=planned.map(ds=>rowHtml(buildDaySnapshot(ds),true)).join('');
-        const savedHtml=snaps.map(s=>rowHtml(s,false)).join('');
-        dom.histDaysList.innerHTML=plannedHtml+savedHtml;
+        }).join('');
     };
 
     // ── Detalle del día ───────────────────────────────────────────────────────
@@ -768,13 +604,9 @@ document.addEventListener('DOMContentLoaded',()=>{
         dom.histDetailPlaceholder.classList.add('hidden');
         dom.histDetailContent.classList.remove('hidden');
 
-        let snap=dailyHistory.snapshots[dateStr];
-        let isPreview=false;
+        const snap=dailyHistory.snapshots[dateStr];
         if(!snap){
-            if(getPlannedFutureDates().has(dateStr)){ snap=buildDaySnapshot(dateStr); isPreview=true; }
-        }
-        if(!snap){
-            dom.histDetailContent.innerHTML=`<div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400"><p class="text-4xl mb-3">📭</p><p class="font-semibold text-gray-600">${formatDateDisplay(dateStr)}</p><p class="text-sm mt-1">No hay cronograma guardado ni planificación para este día.</p></div>`;
+            dom.histDetailContent.innerHTML=`<div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-center py-16 text-gray-400"><p class="text-4xl mb-3">📭</p><p class="font-semibold text-gray-600">${formatDateDisplay(dateStr)}</p><p class="text-sm mt-1">No hay cronograma guardado para este día.</p></div>`;
             return;
         }
 
@@ -799,10 +631,10 @@ document.addEventListener('DOMContentLoaded',()=>{
             if(ev.evType==='task'){
                 const done=ev.progress===100;
                 const cl=done?'bg-green-100 border-green-400':(ev.type==='personal'?'bg-orange-100 border-orange-300':'bg-blue-100 border-blue-300');
-                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${done?'✔ ':''}${ev.description}</span><span class="text-gray-400">${fmt12(ev.startTime)}–${fmt12(ev.endTime)}</span></div>`;
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${done?'✔ ':''}${ev.description}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
             }else{
                 const cl=ev.completed?'bg-teal-100 border-teal-300':'bg-cyan-100 border-cyan-300';
-                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${ev.completed?'✔ ':''}${ev.title}</span><span class="text-gray-400">${fmt12(ev.startTime)}–${fmt12(ev.endTime)}</span></div>`;
+                return`<div class="hist-timeline-block border ${cl}" style="top:${top}px;height:${h}px;left:0;right:0;"><span class="font-medium truncate block">${ev.completed?'✔ ':''}${ev.title}</span><span class="text-gray-400">${ev.startTime}–${ev.endTime}</span></div>`;
             }
         }).join('');
 
@@ -813,12 +645,12 @@ document.addEventListener('DOMContentLoaded',()=>{
 
         // Tareas
         const tasksHtml=(snap.tasks||[]).length>0
-            ?snap.tasks.map(t=>{const done=t.progress===100;return`<div class="flex items-center gap-3 p-3 rounded-lg border ${done?'border-green-200 bg-green-50':t.type==='personal'?'border-orange-100 bg-orange-50':'border-blue-100 bg-blue-50'}"><span class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${done?'bg-green-500 text-white':'bg-white border-2 border-gray-300 text-gray-500'}">${done?'✓':t.progress+'%'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold truncate ${done?'line-through text-gray-400':''}">${t.description}</p><p class="text-xs text-gray-400">${t.startTime&&t.endTime?fmt12(t.startTime)+'–'+fmt12(t.endTime):'Sin horario'} · ${t.responsible||'Sin asignar'}</p></div><span class="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'Personal':'Laboral'}</span></div>`;}).join('')
+            ?snap.tasks.map(t=>{const done=t.progress===100;return`<div class="flex items-center gap-3 p-3 rounded-lg border ${done?'border-green-200 bg-green-50':t.type==='personal'?'border-orange-100 bg-orange-50':'border-blue-100 bg-blue-50'}"><span class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${done?'bg-green-500 text-white':'bg-white border-2 border-gray-300 text-gray-500'}">${done?'✓':t.progress+'%'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold truncate ${done?'line-through text-gray-400':''}">${t.description}</p><p class="text-xs text-gray-400">${t.startTime&&t.endTime?t.startTime+'–'+t.endTime:'Sin horario'} · ${t.responsible||'Sin asignar'}</p></div><span class="text-[9px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${t.type==='personal'?'bg-orange-100 text-orange-600':'bg-blue-100 text-blue-600'}">${t.type==='personal'?'Personal':'Laboral'}</span></div>`;}).join('')
             :'<p class="text-sm text-gray-400 py-2">Sin tareas planificadas para este día.</p>';
 
         // Reuniones
         const mtgsHtml=(snap.meetings||[]).length>0
-            ?snap.meetings.map(m=>`<div class="flex items-center gap-3 p-3 rounded-lg border ${m.completed?'border-teal-200 bg-teal-50':'border-cyan-100 bg-cyan-50'}"><span class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.completed?'bg-teal-500 text-white':'bg-gray-200 text-gray-500'}">${m.completed?'✓':'•'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold ${m.completed?'line-through text-gray-400':''}">${m.title}</p><p class="text-xs text-gray-400">${fmt12(m.startTime)||''}${m.endTime?'–'+fmt12(m.endTime):''}</p></div><span class="text-[9px] font-bold ${m.completed?'text-teal-600':'text-gray-400'}">${m.completed?'Realizada':'Pendiente'}</span></div>`).join('')
+            ?snap.meetings.map(m=>`<div class="flex items-center gap-3 p-3 rounded-lg border ${m.completed?'border-teal-200 bg-teal-50':'border-cyan-100 bg-cyan-50'}"><span class="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${m.completed?'bg-teal-500 text-white':'bg-gray-200 text-gray-500'}">${m.completed?'✓':'•'}</span><div class="min-w-0 flex-grow"><p class="text-sm font-semibold ${m.completed?'line-through text-gray-400':''}">${m.title}</p><p class="text-xs text-gray-400">${m.startTime||''}${m.endTime?'–'+m.endTime:''}</p></div><span class="text-[9px] font-bold ${m.completed?'text-teal-600':'text-gray-400'}">${m.completed?'Realizada':'Pendiente'}</span></div>`).join('')
             :'<p class="text-sm text-gray-400 py-2">Sin reuniones.</p>';
 
         const savedAt=snap.savedAt?new Date(snap.savedAt).toLocaleString('es-ES',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
@@ -829,7 +661,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                         <h2 class="text-xl font-bold text-gray-800 capitalize">${snap.dayName||formatDateDisplay(dateStr)}</h2>
-                        <p class="text-xs text-gray-400 mt-0.5">${isPreview?'🟢 Planificación futura · aún no se ha guardado el registro':(savedAt?'Guardado el '+savedAt:'')}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${savedAt?'Guardado el '+savedAt:''}</p>
                     </div>
                     <div class="flex-shrink-0 text-right">
                         <span class="text-3xl font-black ${pctCol}">${pct}%</span>
@@ -906,8 +738,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(!task.isDelegated){if(task.plannedDate){const pd=new Date(task.plannedDate+'T00:00:00');if(task.startTime&&task.endTime)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>`;else if(pd<today&&task.progress<100)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"></div>`;}else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;}
         const over=task.dueDate&&new Date(task.dueDate+'T00:00:00')<today&&task.progress<100;
         let hl='bg-white';if(over)hl='bg-red-100 border-red-300';else if(task.isDelegated)hl='bg-purple-100 border-purple-300';
-        const pctCol=task.progress>=80?'text-green-600':task.progress>=40?'text-yellow-600':'text-gray-400';
-        return`<div class="task-card relative p-2 rounded-md shadow-sm border ${hl}" data-id="${task.id}">${ind}<p class="font-medium text-sm pr-4 truncate">${task.description}</p><div class="flex justify-between items-center mt-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p><span class="text-xs font-bold ${pctCol}">${task.progress||0}</span></div></div>`;
+        return`<div class="task-card relative p-2 rounded-md shadow-sm border ${hl}" data-id="${task.id}">${ind}<p class="font-medium text-sm pr-4 truncate">${task.description}</p><p class="text-xs text-gray-500 mt-1">Vence: ${formatDateDisplay(task.dueDate)}</p><p class="text-xs font-bold text-indigo-600 mt-0.5">${task.progress||0}%</p></div>`;
     };
     const renderMatrix=()=>{
         ['q1Tasks','q2Tasks','q3Tasks','q4Tasks'].forEach(q=>dom[q].innerHTML='');
@@ -936,7 +767,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
-                return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><button type="button" class="mtg-done-toggle absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold leading-none ${ev.completed?'bg-green-500 text-white border border-green-600':'bg-white text-cyan-600 border border-cyan-400'}" data-id="${ev.id}" title="${ev.completed?'Marcar como pendiente':'Marcar como realizada'}">${ev.completed?'✓':''}</button><p class="font-bold text-[11px] truncate pr-4">${ev.title}</p></div>`;
+                return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
             }
         }return'';
     }).join('');
@@ -964,7 +795,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días</h3><div class="space-y-4">`;
         let cnt=0,cd=new Date(today);
-        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));const dm=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${fmt12(m.startTime)}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));const dm=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="meeting-card bg-cyan-50 border border-cyan-200 p-1.5 rounded text-[10px]" data-id="${m.id}">📞 <span class="font-semibold text-cyan-800">${m.startTime?m.startTime+' – ':''}</span>${m.title}${m.fromGcal?'<span class="gcal-badge ml-1">GCal</span>':''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
         dom.plannerSection.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh)}</div></div><div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar</h4><div class="flex flex-wrap gap-2">${unsched.length>0?unsched.map(t=>`<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join(''):'<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div></div><div>${renderRepetitiveChecklist(todayStr,false)}${upHtml}</div></div>`;
         updatePlannerClock();
@@ -977,51 +808,52 @@ document.addEventListener('DOMContentLoaded',()=>{
         buildGroups(evs).forEach(g=>calcLayout(g));
         let upHtml=`<h3 class="text-lg font-bold text-gray-800 mb-4">Próximos Días (Total)</h3><div class="space-y-4">`;
         let cnt=0,cd=new Date(today);
-        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);const dm=meetings.filter(m=>m.date===ds).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="flex items-center gap-1.5 p-1.5 bg-cyan-50 rounded border border-cyan-200 text-[10px]"><span class="text-cyan-600 font-bold">📅</span><span class="font-medium text-cyan-800 truncate">${m.title}</span>${m.startTime?`<span class="ml-auto text-cyan-500 flex-shrink-0">${fmt12(m.startTime)}</span>`:''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
+        while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);const dm=meetings.filter(m=>m.date===ds).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="meeting-card bg-cyan-50 border border-cyan-200 p-1.5 rounded text-[10px]" data-id="${m.id}">📞 <span class="font-semibold text-cyan-800">${m.startTime?m.startTime+' – ':''}</span>${m.title}${m.fromGcal?'<span class="gcal-badge ml-1">GCal</span>':''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
         dom.combinedPlannerContainer.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh,true)}</div></div></div><div>${renderRepetitiveChecklist(todayStr,true)}${upHtml}</div></div>`;
         updatePlannerClock();
-    };
-    const renderMtgMiniCal=()=>{
-        const calEl=document.getElementById('mtg-mini-cal');if(!calEl)return;
-        const today=new Date(),todayStr=today.toISOString().split('T')[0];
-        const mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
-        const MONTHS=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-        const DAYS=['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
-        let html='';
-        for(let mo=0;mo<2;mo++){
-            const yr=today.getFullYear()+(today.getMonth()+mo>11?1:0);
-            const mn=(today.getMonth()+mo)%12;
-            const daysInMo=new Date(yr,mn+1,0).getDate();
-            const startWd=(new Date(yr,mn,1).getDay()+6)%7;
-            // Build set of days with meetings this month
-            const mtgDays=new Set(meetings.filter(m=>{if(!mv(m))return false;const d=new Date(m.date+'T00:00:00');return d.getFullYear()===yr&&d.getMonth()===mn;}).map(m=>m.date.split('-')[2]|0));
-            html+=`<div class="mtg-cal-month"><div class="font-bold text-gray-600 text-[10px] mb-1 text-center uppercase">${MONTHS[mn]} ${yr}</div>`;
-            html+=`<div class="mtg-cal-grid">`;
-            DAYS.forEach(d=>html+=`<div class="mtg-cal-cell" style="color:#9ca3af;font-weight:600;">${d}</div>`);
-            for(let i=0;i<startWd;i++)html+=`<div class="mtg-cal-cell empty"></div>`;
-            for(let d=1;d<=daysInMo;d++){
-                const ds=`${yr}-${String(mn+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                const hasMtg=mtgDays.has(d);
-                const isToday=ds===todayStr;
-                let cls='mtg-cal-cell';
-                if(hasMtg)cls+=' has-mtg';
-                if(isToday)cls+=' today-mtg';
-                const tip=hasMtg?` title="${meetings.filter(m=>m.date===ds&&mv(m)).map(m=>m.title).join(', ')}"`:'' ;
-                html+=`<div class="${cls}"${tip} data-mtg-date="${ds}">${d}</div>`;
-            }
-            html+=`</div></div>`;
-        }
-        html+=`<div class="flex gap-2 mt-1 text-[9px] text-gray-400 flex-wrap"><span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-200 border border-indigo-400"></span>Con reuniones</span><span class="flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full border-2 border-orange-400"></span>Hoy</span></div>`;
-        calEl.innerHTML=html;
     };
     const renderMeetingMonitor=()=>{
         const today=new Date();today.setHours(0,0,0,0);
         const tStr=today.toISOString().split('T')[0],tmStr=new Date(today.getTime()+864e5).toISOString().split('T')[0];
         const mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
-        const mkList=(title,ds)=>{const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));if(!ms.length)return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><p class="text-sm text-gray-400 mb-4">No hay reuniones.</p>`;return`<h3 class="text-base font-bold mb-2 text-gray-700">${title}</h3><div class="space-y-2 mb-4">${ms.map(m=>`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-36 text-center flex-shrink-0"><p class="font-bold text-indigo-600 text-sm ${m.completed?'line-through text-gray-500':''}">${fmt12(m.startTime)}${m.endTime?' - '+fmt12(m.endTime):''}</p></div><div class="border-l-2 border-indigo-500 pl-3 ml-3 flex-grow min-w-0"><p class="font-medium text-sm ${m.completed?'line-through text-gray-500':''} truncate">${m.title}</p></div><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-3 flex-shrink-0 text-blue-600 rounded" ${m.completed?'checked':''}></div>`).join('')}</div>`;};
-        dom.meetingsList.innerHTML=mkList('Reuniones de Hoy',tStr)+mkList('Reuniones de Mañana',tmStr);
-        renderMtgMiniCal();
+        // ── Mini-calendario dos meses ──────────────────────────────────────────
+        const buildMiniCal=()=>{
+            const allMtgs=meetings.filter(m=>!m.completed&&mv(m));
+            const mtgMap={};allMtgs.forEach(m=>{if(!mtgMap[m.date])mtgMap[m.date]=[];mtgMap[m.date].push(m.title);});
+            const MONTHS=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+            const now=new Date();let html='<div class="flex gap-3 flex-wrap">';
+            for(let mo=0;mo<2;mo++){
+                const baseMonth=now.getMonth()+mo;
+                const yr=now.getFullYear()+Math.floor(baseMonth/12);
+                const mn=baseMonth%12;
+                const firstWd=(new Date(yr,mn,1).getDay()+6)%7;
+                const daysInMon=new Date(yr,mn+1,0).getDate();
+                html+=`<div style="flex:1;min-width:140px"><p style="font-size:10px;font-weight:700;text-align:center;color:#4b5563;margin-bottom:3px">${MONTHS[mn]} ${yr}</p>`;
+                html+='<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px">';
+                ['Lu','Ma','Mi','Ju','Vi','Sa','Do'].forEach(d=>{html+=`<div style="text-align:center;font-size:8px;color:#9ca3af;padding:1px 0">${d}</div>`;});
+                for(let i=0;i<firstWd;i++)html+='<div></div>';
+                for(let d=1;d<=daysInMon;d++){
+                    const ds=`${yr}-${String(mn+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const hasMtg=!!mtgMap[ds];
+                    const isToday=ds===tStr;
+                    const tip=hasMtg?mtgMap[ds].join(', '):'';
+                    let st='font-size:9px;text-align:center;padding:2px 1px;border-radius:50%;line-height:1.4;';
+                    if(isToday)st+='box-shadow:inset 0 0 0 2px #f97316;font-weight:700;';
+                    if(hasMtg)st+='background:#dbeafe;color:#1d4ed8;font-weight:700;cursor:default;';
+                    html+=`<div style="${st}" title="${tip.replace(/"/g,"'")}">${d}</div>`;
+                }
+                html+='</div></div>';
+            }
+            html+='</div><p style="font-size:9px;color:#9ca3af;margin-top:4px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;background:#dbeafe;border-radius:50%"></span>Días con reuniones pendientes</p>';
+            return html;
+        };
+        const mkMtgCard=m=>{
+            const gcalBadge=m.fromGcal?'<span class="gcal-badge ml-1">GCal</span>':'';
+            return`<div class="meeting-card flex items-center p-3 rounded-lg border ${m.completed?'bg-green-100 border-green-300':m.fromGcal?'bg-green-50 border-green-200 gcal-event-card':'bg-gray-50 border-gray-200'}" data-id="${m.id}"><div class="w-40 text-center"><p class="font-bold text-indigo-600 ${m.completed?'line-through text-gray-500':''}">${m.startTime||''}${m.endTime?' - '+m.endTime:''}</p></div><div class="border-l-2 border-indigo-500 pl-4 ml-4 flex-grow"><p class="font-medium ${m.completed?'line-through text-gray-500':''}">${m.title}${gcalBadge}</p></div>${m.fromGcal?'<span class="text-xs text-green-600 ml-2">Solo lectura</span>':`<input type="checkbox" data-id="${m.id}" class="complete-meeting-cb-monitor h-5 w-5 ml-4 text-blue-600 rounded" ${m.completed?'checked':''}>`}</div>`;
+        };
+        const mkList=(title,ds)=>{const ms=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));if(!ms.length)return`<h3 class="text-lg font-bold mb-2">${title}</h3><p class="text-sm text-gray-500">No hay reuniones.</p>`;return`<h3 class="text-lg font-bold mb-2">${title}</h3><div class="space-y-3">${ms.map(mkMtgCard).join('')}</div>`;};
+        dom.meetingsList.innerHTML=`<div class="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200"><div class="flex justify-between items-center mb-2"><h4 class="text-xs font-bold text-gray-500 uppercase tracking-wider">📅 Calendario de Reuniones</h4><div id="gcal-sync-indicator" class="text-[10px] text-green-600 font-semibold hidden">↻ Sincronizando...</div></div>${buildMiniCal()}</div>`+mkList('Reuniones de Hoy',tStr)+`<div class="mt-6">${mkList('Reuniones de Mañana',tmStr)}</div>`;
     };
 
     // ── All Tasks / Meetings ──────────────────────────────────────────────────
@@ -1042,7 +874,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         const dr=filterMtgDP.selectedDates,mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
         const f=meetings.filter(m=>{if(!mv(m))return false;if(dr.length>0){const md=new Date(m.date+'T00:00:00');if(dr.length===1)return md.getTime()===dr[0].getTime();if(dr.length===2)return md>=dr[0]&&md<=dr[1];}return true;}).sort((a,b)=>new Date(a.date)-new Date(b.date)||a.startTime.localeCompare(b.startTime));
         const pend=f.filter(m=>!m.completed);
-        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${fmt12(m.startTime)||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
+        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${m.startTime||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
         let comp=meetings.filter(m=>m.completed&&mv(m));const sr=filters.completedMeetingSearch.toLowerCase().trim(),hdr=filters.historyMeetingDateRange;
         if(sr)comp=comp.filter(m=>m.title.toLowerCase().includes(sr));
         if(hdr.length===2)comp=comp.filter(m=>{const d=new Date(m.date+'T00:00:00');return d>=hdr[0]&&d<=hdr[1];});
@@ -1063,20 +895,12 @@ document.addEventListener('DOMContentLoaded',()=>{
         dom.filterTagsContainer.innerHTML=`<span class="tag-filter ${!filters.tag?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="all">Todas</span>`+tags.map(t=>`<span class="tag-filter ${filters.tag===t?'selected bg-blue-500 text-white':'bg-gray-200'} text-gray-800 text-[10px] font-medium px-3 py-1 rounded-full" data-tag="${t}">${t}</span>`).join('');
     };
     const renderSubtasksInModal=()=>{dom.subtasksList.innerHTML=currentSubtasks.map(st=>`<div class="subtask-item flex items-center gap-2 p-2 rounded-md hover:bg-gray-100"><input type="checkbox" ${st.isCompleted?'checked':''} class="subtask-checkbox h-4 w-4" data-id="${st.id}"><span class="flex-grow text-xs ${st.isCompleted?'line-through text-gray-500':''}">${st.text}</span><span class="text-[10px] bg-gray-200 px-2 py-1 rounded-full">${st.responsible||'N/A'}</span><button type="button" class="delete-subtask-btn text-red-500 opacity-0 transition" data-id="${st.id}">✖</button></div>`).join('');};
-    const escHtml=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const renderCommentsInModal=()=>{
-        if(!currentComments.length){dom.commentsList.innerHTML='<p class="text-xs text-gray-400 italic">Sin comentarios todavía.</p>';return;}
-        dom.commentsList.innerHTML=currentComments.map(c=>{
-            const when=c.at?new Date(c.at).toLocaleString('es-ES',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-            return`<div class="comment-item flex items-start gap-2 p-2.5 rounded-md bg-gray-50 border border-gray-200"><div class="flex-grow min-w-0"><p class="text-sm text-gray-700 whitespace-pre-wrap break-words">${escHtml(c.text)}</p>${when?`<p class="text-[10px] text-gray-400 mt-1">${when}</p>`:''}</div><button type="button" class="delete-comment-btn text-red-400 hover:text-red-600 text-sm flex-shrink-0" data-id="${c.id}">✖</button></div>`;
-        }).join('');
-    };
 
     // ── Modales ───────────────────────────────────────────────────────────────
     const openModal=(el,mc)=>{el.classList.remove('hidden');setTimeout(()=>{el.classList.remove('opacity-0');mc?.classList.remove('scale-95');},10);};
     const closeModal=(el,mc,cb)=>{el.classList.add('opacity-0');mc?.classList.add('scale-95');setTimeout(()=>{el.classList.add('hidden');cb?.();},300);};
     const openTaskModal=()=>openModal(dom.taskModal,dom.modalContent);
-    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];currentComments=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
+    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
     const openEditTaskModal=(task,initialTime=null)=>{
         dom.taskForm.reset();populateModalSelects();
         const isRep=!!task.isRepetitive;dom.isRepetitiveCheckbox.checked=isRep;
@@ -1084,18 +908,18 @@ document.addEventListener('DOMContentLoaded',()=>{
             dom.modalTitle.innerText='Editar Tarea';dom.taskForm.taskId.value=task.id;dom.taskForm.taskType.value=task.type||'laboral';dom.taskForm.description.value=task.description;dom.taskForm.taskSize.value=task.taskSize||'Mediana';dom.taskForm.importance.value=task.isImportant;dom.taskForm.urgency.value=task.isUrgent;dom.taskForm.isDelegated.checked=task.isDelegated;dom.taskForm.progress.value=task.progress||0;dom.progressLabel.textContent=`${task.progress||0}%`;
             if(task.dueDate)dueDatepicker.setDate(task.dueDate);
             if(task.plannedDate){plannedDatepicker.setDate(task.plannedDate);dom.timeContainerModal.classList.remove('hidden');if(task.startTime)startTP.setDate(task.startTime);if(task.endTime)endTP.setDate(task.endTime);}else dom.timeContainerModal.classList.add('hidden');
-            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));currentComments=JSON.parse(JSON.stringify(task.comments||[]));dom.deleteTaskBtn.classList.remove('hidden');
+            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));dom.deleteTaskBtn.classList.remove('hidden');
         }else{
-            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];currentComments=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
+            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
             if(initialTime){const ts=new Date().toISOString().split('T')[0];dueDatepicker.setDate(ts);plannedDatepicker.setDate(ts);startTP.setDate(initialTime);const[h,m]=initialTime.split(':').map(Number),eh=h+1;endTP.setDate(`${eh<10?'0'+eh:eh}:${m<10?'0'+m:m}`);dom.timeContainerModal.classList.remove('hidden');}
         }
         dom.dateControlsContainer.classList.toggle('hidden',isRep);dom.delegatedContainer.classList.toggle('hidden',isRep);dom.progressContainerModal.classList.toggle('hidden',isRep);
         dom.plannedDateContainer.style.display=(dom.taskForm.isDelegated.checked||isRep)?'none':'block';
-        renderSubtasksInModal();renderCommentsInModal();openTaskModal();
+        renderSubtasksInModal();openTaskModal();
     };
     const saveTask=e=>{
         e.preventDefault();const id=dom.taskForm.taskId.value,selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value),isRep=dom.isRepetitiveCheckbox.checked;
-        const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks],comments:[...currentComments]};
+        const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks]};
         if(id)td.progress=parseInt(dom.taskForm.progress.value,10);
         const fin={...(id?tasks.find(t=>t.id===id):{}),...td};
         if(!id){fin.id=Date.now().toString();fin.progress=0;fin.completedDates=[];}
@@ -1105,13 +929,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     const openMeetingModal=()=>openModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'));
     const closeMeetingModal=()=>closeModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'),()=>{dom.meetingForm.reset();dom.meetingForm.meetingId.value='';dom.deleteMeetingBtn.classList.add('hidden');meetingDatepicker.clear();mtgStartTP.clear();mtgEndTP.clear();});
     const openEditMeetingModal=m=>{dom.meetingForm.reset();if(m?.id){dom.meetingModalTitle.innerText='Editar Reunión';dom.meetingForm.meetingId.value=m.id;dom.meetingForm.meetingType.value=m.type||'laboral';dom.meetingForm.meetingTitle.value=m.title;meetingDatepicker.setDate(m.date);if(m.startTime){mtgStartTP.setDate(m.startTime);mtgEndTP.setDate(m.endTime);}dom.deleteMeetingBtn.classList.remove('hidden');}else{dom.meetingModalTitle.innerText='Nueva Reunión';dom.meetingForm.meetingId.value='';dom.meetingForm.meetingType.value=currentView;dom.deleteMeetingBtn.classList.add('hidden');}openMeetingModal();};
-    const openNewMeetingAt=timeStr=>{
-        openEditMeetingModal({});
-        meetingDatepicker.setDate(todayStrLocal());
-        if(timeStr){const p=timeStr.split(':');const h=Number(p[0]),m=Number(p[1]);mtgStartTP.setDate(timeStr);const eh2=Math.min(h+1,23);mtgEndTP.setDate(`${String(eh2).padStart(2,'0')}:${String(m).padStart(2,'0')}`);}
-    };
-    const openSlotChoice=timeStr=>{pendingSlotTime=timeStr||null;dom.slotChoiceTime.textContent=timeStr?('A las '+fmt12(timeStr)):'';openModal(dom.slotChoiceModal,dom.slotChoiceModal.querySelector('.modal-content'));};
-    const closeSlotChoice=()=>closeModal(dom.slotChoiceModal,dom.slotChoiceModal.querySelector('.modal-content'));
     const saveMeeting=e=>{e.preventDefault();const id=dom.meetingForm.meetingId.value,st=dom.meetingForm.meetingStartTime.value,et=dom.meetingForm.meetingEndTime.value;if(st&&et&&parseTime(et)<=parseTime(st)){alert('La hora de fin debe ser posterior.');return;}const md={type:dom.meetingForm.meetingType.value,title:dom.meetingForm.meetingTitle.value,date:dom.meetingForm.meetingDate.value,startTime:st,endTime:et};if(id)meetings[meetings.findIndex(m=>m.id===id)]={...meetings.find(m=>m.id===id),...md};else meetings.push({id:Date.now().toString(),completed:false,...md});saveData();renderAll();closeMeetingModal();};
     const openScheduleModal=tid=>{const task=tasks.find(t=>t.id===tid);if(!task)return;dom.scheduleForm.scheduleTaskId.value=tid;dom.scheduleTaskDescription.textContent=task.description;schStartTP.clear();schEndTP.clear();openModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'));};
     const closeScheduleModal=()=>closeModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'),()=>dom.scheduleForm.reset());
@@ -1147,6 +964,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.searchCompletedTasks.addEventListener('input',e=>{filters.completedTaskSearch=e.target.value;renderAllTasksList();});
     dom.toggleAllCompletedTasks.addEventListener('click',()=>{filters.showAllCompletedTasks=!filters.showAllCompletedTasks;renderAllTasksList();});
     dom.addMeetingBtn.addEventListener('click',()=>openEditMeetingModal({}));
+    document.getElementById('openModalMeetingDash').addEventListener('click',()=>openEditMeetingModal({}));
     dom.closeMeetingModalBtn.addEventListener('click',closeMeetingModal);
     dom.meetingForm.addEventListener('submit',saveMeeting);
     dom.deleteMeetingBtn.addEventListener('click',()=>{meetings=meetings.filter(m=>m.id!==dom.meetingForm.meetingId.value);saveData();renderAll();closeMeetingModal();});
@@ -1156,12 +974,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.toggleAllCompletedMeetings.addEventListener('click',()=>{filters.showAllCompletedMeetings=!filters.showAllCompletedMeetings;renderAllMeetingsList();});
     dom.scheduleForm.addEventListener('submit',saveScheduleTime);
     dom.closeScheduleModalBtn.addEventListener('click',closeScheduleModal);
-    dom.slotChoiceTask.addEventListener('click',()=>{const tm=pendingSlotTime;closeSlotChoice();openEditTaskModal({},tm);});
-    dom.slotChoiceMeeting.addEventListener('click',()=>{const tm=pendingSlotTime;closeSlotChoice();openNewMeetingAt(tm);});
-    dom.slotChoiceCancel.addEventListener('click',closeSlotChoice);
-    dom.slotChoiceModal.addEventListener('click',e=>{if(e.target===dom.slotChoiceModal)closeSlotChoice();});
-    dom.addCommentBtn.addEventListener('click',()=>{const t=dom.newCommentText.value.trim();if(!t)return;currentComments.push({id:Date.now().toString(),text:t,at:new Date().toISOString()});dom.newCommentText.value='';renderCommentsInModal();});
-    dom.commentsList.addEventListener('click',e=>{const b=e.target.closest('.delete-comment-btn');if(b){currentComments=currentComments.filter(c=>c.id!==b.dataset.id);renderCommentsInModal();}});
     dom.pomodoroModeBtn.addEventListener('click',()=>switchTimerMode('pomodoro'));
     dom.shortBreakModeBtn.addEventListener('click',()=>switchTimerMode('shortBreak'));
     dom.longBreakModeBtn.addEventListener('click',()=>switchTimerMode('longBreak'));
@@ -1187,18 +999,14 @@ document.addEventListener('DOMContentLoaded',()=>{
     filterDatepicker.config.onChange.push(()=>renderAllTasksList());
     filterMtgDP.config.onChange.push(()=>renderAllMeetingsList());
     dom.plannerSection.addEventListener('click',e=>{
-        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);return;}
-        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}return;}
-        const ut=e.target.closest('.unscheduled-task');if(ut){openScheduleModal(ut.dataset.id);return;}
-        const dt=e.target.closest('.mtg-done-toggle');if(dt){const m=meetings.find(m=>m.id===dt.dataset.id);if(m){m.completed=!m.completed;saveData();renderAll();}e.stopPropagation();return;}
-        const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);e.stopPropagation();return;}
-        const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);e.stopPropagation();return;}
-        const ts=e.target.closest('.time-slot');if(ts)openSlotChoice(ts.dataset.time);
+        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
+        const ut=e.target.closest('.unscheduled-task');if(ut)openScheduleModal(ut.dataset.id);
+        const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
+        const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
     });
     dom.combinedPlannerContainer.addEventListener('click',e=>{
-        const ts=e.target.closest('.time-slot');if(ts){openSlotChoice(ts.dataset.time);return;}
+        const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
         const card=e.target.closest('.task-card');if(card&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===card.dataset.id);if(t)openEditTaskModal(t);}
-        const dt=e.target.closest('.mtg-done-toggle');if(dt){const m=meetings.find(m=>m.id===dt.dataset.id);if(m){m.completed=!m.completed;saveData();renderAll();}e.stopPropagation();return;}
         const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(m=>m.id===mc.dataset.id);if(m)openEditMeetingModal(m);}
         const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
         const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
@@ -1218,6 +1026,135 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(histData?.snapshots){dailyHistory=histData;updateHistBadge();}
         scheduleMidnightSnapshot();
     };
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  GOOGLE CALENDAR INTEGRATION
+    // ════════════════════════════════════════════════════════════════════════
+    // ⚠ CONFIGURACIÓN: reemplaza este Client ID con el tuyo de Google Cloud Console
+    // Pasos: console.cloud.google.com → APIs → Google Calendar API → Credenciales
+    // → Crear ID de cliente OAuth → Aplicación web → Agregar origen autorizado:
+    //   https://TU-USUARIO.github.io
+    const GCAL_CLIENT_ID = '718543996633-lrsmmk7mal6rulcc9llt4k4ne9vccnc6.apps.googleusercontent.com';
+    const GCAL_SCOPES    = 'https://www.googleapis.com/auth/calendar.events.readonly';
+    const GCAL_API_BASE  = 'https://www.googleapis.com/calendar/v3';
+
+    let gcalToken = null;
+    let gcalSyncInterval = null;
+
+    const gcalSetStatus = (cls, text) => {
+        const el = document.getElementById('gcal-status');
+        const tx = document.getElementById('gcal-status-text');
+        if (!el || !tx) return;
+        el.className = `${cls} inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border cursor-pointer`;
+        tx.textContent = text;
+    };
+
+    const gcalLogin = () => {
+        if (!window.google?.accounts?.oauth2) {
+            alert('Google Identity Services aún no cargó. Espera un momento e intenta de nuevo.');
+            return;
+        }
+        gcalSetStatus('gcal-loading', '↻ Conectando...');
+        const client = google.accounts.oauth2.initTokenClient({
+            client_id: GCAL_CLIENT_ID,
+            scope: GCAL_SCOPES,
+            callback: async (resp) => {
+                if (resp.error) { gcalSetStatus('gcal-disconnected', 'Google Calendar'); return; }
+                gcalToken = resp.access_token;
+                localStorage.setItem('gcal_token', gcalToken);
+                gcalSetStatus('gcal-connected', '✓ Google Calendar');
+                await gcalSync();
+                // Sincronizar cada 5 minutos mientras la app está abierta
+                clearInterval(gcalSyncInterval);
+                gcalSyncInterval = setInterval(gcalSync, 5 * 60 * 1000);
+            }
+        });
+        client.requestAccessToken();
+    };
+
+    const gcalLogout = () => {
+        if (gcalToken && window.google?.accounts?.oauth2) {
+            google.accounts.oauth2.revoke(gcalToken);
+        }
+        gcalToken = null;
+        localStorage.removeItem('gcal_token');
+        // Eliminar reuniones importadas de GCal del array local
+        const before = meetings.length;
+        meetings = meetings.filter(m => !m.fromGcal);
+        if (meetings.length !== before) { saveData(); renderAll(); }
+        gcalSetStatus('gcal-disconnected', 'Google Calendar');
+        clearInterval(gcalSyncInterval);
+    };
+
+    const gcalFetchEvents = async (calendarId = 'primary') => {
+        const now = new Date();
+        const timeMin = now.toISOString();
+        const timeMax = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString(); // 60 días
+        const url = `${GCAL_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?` +
+            `timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}` +
+            `&singleEvents=true&orderBy=startTime&maxResults=100`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${gcalToken}` } });
+        if (res.status === 401) { gcalToken = null; localStorage.removeItem('gcal_token'); gcalSetStatus('gcal-disconnected','Google Calendar'); return []; }
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.items || [];
+    };
+
+    const gcalEventToMeeting = (ev) => {
+        // Ignorar eventos de todo el día o sin hora
+        const start = ev.start?.dateTime;
+        const end   = ev.end?.dateTime;
+        if (!start || !end) return null;
+        const sDate = start.split('T')[0];
+        const sTime = start.split('T')[1].substring(0,5);
+        const eTime = end.split('T')[1].substring(0,5);
+        return {
+            id: 'gcal_' + ev.id,
+            title: ev.summary || '(Sin título)',
+            date: sDate,
+            startTime: sTime,
+            endTime: eTime,
+            type: 'laboral',
+            completed: false,
+            fromGcal: true,
+            gcalEventId: ev.id,
+            gcalLink: ev.htmlLink || null,
+        };
+    };
+
+    const gcalSync = async () => {
+        if (!gcalToken) return;
+        const ind = document.getElementById('gcal-sync-indicator');
+        if (ind) ind.classList.remove('hidden');
+        try {
+            const events = await gcalFetchEvents('primary');
+            const newMtgs = events.map(gcalEventToMeeting).filter(Boolean);
+            // Eliminar reuniones GCal previas y reemplazar con las nuevas
+            meetings = meetings.filter(m => !m.fromGcal);
+            meetings.push(...newMtgs);
+            saveData();
+            renderAll();
+            gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length})`);
+        } catch(e) {
+            console.error('GCal sync error:', e);
+            gcalSetStatus('gcal-connected', '⚠ GCal error');
+        }
+        if (ind) ind.classList.add('hidden');
+    };
+
+    // Toggle: si ya tiene token conecta directamente, si no pide login
+    window._gcalToggle = () => {
+        if (gcalToken) {
+            if (confirm('¿Desconectar Google Calendar? Se eliminarán las reuniones importadas.')) gcalLogout();
+        } else {
+            gcalLogin();
+        }
+    };
+
+    // Restaurar sesión si había token guardado (flujo silencioso no disponible sin backend,
+    // el usuario deberá volver a hacer click en el badge al recargar)
+    // (Nota: los access_token de Google expiran en 1h, se pedirá nueva autorización automáticamente)
+
     setInterval(checkAllAlerts,60000);
     setInterval(updatePlannerClock,1000);
     if(window._fbReady)initApp();
