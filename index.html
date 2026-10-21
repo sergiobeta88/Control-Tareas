@@ -522,7 +522,9 @@ document.addEventListener('DOMContentLoaded',()=>{
             if(h>=6&&h<=23){tl.style.top=((h-6)*hh+(m/60)*hh)+'px';tl.style.display='block';}else tl.style.display='none';
         });
     };
-    const saveData=()=>fbSave({tasks,meetings,allTags,allResponsibles});
+    // Los eventos de Google Calendar (fromGcal=true) se re-importan en cada sesión
+    // y no deben guardarse en Firebase para evitar errores de escritura innecesarios.
+    const saveData=()=>fbSave({tasks,meetings:meetings.filter(m=>!m.fromGcal),allTags,allResponsibles});
     const applyData=raw=>{const d=parseData(raw);tasks=d.tasks;meetings=d.meetings;allTags=d.allTags;allResponsibles=d.allResponsibles;checkDueDates();renderAll();};
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1380,11 +1382,12 @@ document.addEventListener('DOMContentLoaded',()=>{
         try {
             const events = await gcalFetchEvents('primary');
             const newMtgs = events.map(gcalEventToMeeting).filter(Boolean);
-            // Eliminar reuniones GCal previas y reemplazar con las nuevas
+            // Reemplazar eventos GCal en memoria — SIN guardar en Firebase.
+            // saveData() ya excluye fromGcal, pero evitamos la llamada por completo
+            // para no tocar el indicador de Firebase durante la sincronización de GCal.
             meetings = meetings.filter(m => !m.fromGcal);
             meetings.push(...newMtgs);
-            saveData();
-            renderAll();
+            renderAll(); // solo re-pinta, Firebase no se toca
             gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length})`);
         } catch(e) {
             console.error('GCal sync error:', e);
