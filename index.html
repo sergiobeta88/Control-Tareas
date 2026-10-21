@@ -188,18 +188,20 @@
                 <div id="meetings-list" class="space-y-4"></div>
             </div>
         </div>
-        <h2 class="text-2xl font-bold text-center mb-2">Matriz de Prioridades</h2>
+        <h2 class="text-2xl font-bold text-center mb-2">Tareas por Etiqueta</h2>
         <div class="flex justify-center flex-wrap gap-x-4 gap-y-2 mb-6 text-xs text-gray-600">
             <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-1.5"></span>Agendada</div>
             <div class="flex items-center"><span class="w-3 h-3 bg-purple-500 rounded-full mr-1.5"></span>Planificada</div>
             <div class="flex items-center"><span class="w-3 h-3 bg-orange-400 rounded-full mr-1.5"></span>Por Planificar</div>
+            <div class="flex items-center"><span class="w-3 h-3 bg-red-500 rounded-full mr-1.5"></span>Atender ya</div>
+            <div class="flex items-center"><span class="w-3 h-3 bg-yellow-400 rounded-full mr-1.5"></span>Planificar</div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="quadrant bg-red-100 p-4 rounded-lg shadow-sm border border-red-200"><h3 class="text-xl font-bold text-red-800 mb-3">Atender ya</h3><div id="q1-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
-            <div class="quadrant bg-green-100 p-4 rounded-lg shadow-sm border border-green-200"><h3 class="text-xl font-bold text-green-800 mb-3">Planificar</h3><div id="q2-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
-            <div class="quadrant bg-yellow-100 p-4 rounded-lg shadow-sm border border-yellow-200"><h3 class="text-xl font-bold text-yellow-800 mb-3">Delegar</h3><div id="q3-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
-            <div class="quadrant bg-blue-100 p-4 rounded-lg shadow-sm border border-blue-200"><h3 class="text-xl font-bold text-blue-800 mb-3">Posponer</h3><div id="q4-tasks" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"></div></div>
-        </div>
+        <!-- ids q1-tasks..q4-tasks se mantienen ocultos para no romper referencias JS existentes -->
+        <div id="q1-tasks" class="hidden"></div>
+        <div id="q2-tasks" class="hidden"></div>
+        <div id="q3-tasks" class="hidden"></div>
+        <div id="q4-tasks" class="hidden"></div>
+        <div id="tag-groups-container" class="space-y-4"></div>
         <div class="mt-12"><h2 class="text-2xl font-bold text-center mb-6">Planificación del Día</h2><div id="planner-section" class="bg-white p-6 rounded-lg shadow-lg"></div></div>
     </div>
 
@@ -732,23 +734,94 @@ document.addEventListener('DOMContentLoaded',()=>{
     const setMainView=v=>{currentView=v;dom.viewLaboralBtn.classList.toggle('active',v==='laboral');dom.viewPersonalBtn.classList.toggle('active',v==='personal');renderAll();};
     const renderAll=()=>{renderMatrix();renderPlanner();renderCombinedPlanner();renderMeetingMonitor();populateModalSelects();renderFilters();renderAllTasksList();renderAllMeetingsList();};
 
-    // ── Matriz ────────────────────────────────────────────────────────────────
+    // ── Tareas por Etiqueta ───────────────────────────────────────────────────
     const renderMatrixTaskCard=task=>{
-        let ind='';const today=new Date();today.setHours(0,0,0,0);
-        if(!task.isDelegated){if(task.plannedDate){const pd=new Date(task.plannedDate+'T00:00:00');if(task.startTime&&task.endTime)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>`;else if(pd<today&&task.progress<100)ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"></div>`;}else ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white"></div>`;}
-        const over=task.dueDate&&new Date(task.dueDate+'T00:00:00')<today&&task.progress<100;
-        let hl='bg-white';if(over)hl='bg-red-100 border-red-300';else if(task.isDelegated)hl='bg-purple-100 border-purple-300';
-        return`<div class="task-card relative p-2 rounded-md shadow-sm border ${hl}" data-id="${task.id}">${ind}<p class="font-medium text-sm pr-4 truncate">${task.description}</p><p class="text-xs text-gray-500 mt-1">Vence: ${formatDateDisplay(task.dueDate)}</p><p class="text-xs font-bold text-indigo-600 mt-0.5">${task.progress||0}%</p></div>`;
+        // Marca de estado de planificación (punto de color en esquina superior derecha)
+        const today=new Date();today.setHours(0,0,0,0);
+        let ind='';
+        if(!task.isDelegated){
+            if(task.plannedDate){
+                const pd=new Date(task.plannedDate+'T00:00:00');
+                if(task.startTime&&task.endTime)       ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-green-500 rounded-full border-2 border-white" title="Agendada"></div>`;
+                else if(pd<today&&task.progress<100)   ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" title="Por Planificar"></div>`;
+                else                                   ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-purple-500 rounded-full border-2 border-white" title="Planificada"></div>`;
+            } else                                     ind=`<div class="absolute top-2 right-2 w-3 h-3 bg-orange-400 rounded-full border-2 border-white" title="Por Planificar"></div>`;
+        }
+        // Color de borde según prioridad: rojo=Atender ya, amarillo=Planificar
+        const isAtenderYa = task.isUrgent && task.isImportant;
+        const isPlanificar = !task.isUrgent && task.isImportant;
+        let borderCls = 'border-gray-200';
+        let bgCls     = 'bg-white';
+        if(isAtenderYa){ borderCls='border-red-400'; bgCls='bg-red-50'; }
+        else if(isPlanificar){ borderCls='border-yellow-400'; bgCls='bg-yellow-50'; }
+        // Barra de prioridad lateral
+        const priorityBar = isAtenderYa
+            ? `<div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-md bg-red-500"></div>`
+            : isPlanificar
+            ? `<div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-md bg-yellow-400"></div>`
+            : '';
+        // Etiqueta de prioridad pequeña
+        const priorityLabel = isAtenderYa
+            ? `<span class="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">Atender ya</span>`
+            : isPlanificar
+            ? `<span class="text-[9px] font-bold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full">Planificar</span>`
+            : '';
+        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls} overflow-hidden" data-id="${task.id}">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div><p class="text-xs font-bold text-indigo-600 mt-0.5">${task.progress||0}%</p></div>`;
     };
     const renderMatrix=()=>{
-        ['q1Tasks','q2Tasks','q3Tasks','q4Tasks'].forEach(q=>dom[q].innerHTML='');
-        const today=new Date();today.setHours(0,0,0,0);const f5=new Date(today);f5.setDate(today.getDate()+5);
-        tasks.filter(t=>{if(t.progress===100||t.isRepetitive)return false;return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;}).forEach(task=>{
-            const due=new Date(task.dueDate+'T00:00:00'),soon=due<=f5,html=renderMatrixTaskCard(task);
-            if(task.isUrgent&&task.isImportant)(soon?dom.q1Tasks:dom.q2Tasks).insertAdjacentHTML('beforeend',html);
-            else if(!task.isUrgent&&task.isImportant)dom.q2Tasks.insertAdjacentHTML('beforeend',html);
-            else if(task.isUrgent&&!task.isImportant)dom.q3Tasks.insertAdjacentHTML('beforeend',html);
-            else dom.q4Tasks.insertAdjacentHTML('beforeend',html);
+        // Limpiar contenedor de grupos por etiqueta
+        const container=document.getElementById('tag-groups-container');
+        if(!container)return;
+        container.innerHTML='';
+        const today=new Date();today.setHours(0,0,0,0);
+        // Filtrar tareas activas del view actual
+        const activeTasks=tasks.filter(t=>{
+            if(t.progress===100||t.isRepetitive)return false;
+            return currentView==='laboral'?(!t.type||t.type==='laboral'):t.type===currentView;
+        });
+        if(!activeTasks.length){
+            container.innerHTML='<p class="text-center text-gray-400 py-8">No hay tareas activas.</p>';
+            return;
+        }
+        // Agrupar por etiquetas; tareas sin etiqueta → grupo "Sin etiqueta"
+        const groups={};
+        activeTasks.forEach(task=>{
+            const tags=(task.tags&&task.tags.length)?task.tags:['Sin etiqueta'];
+            tags.forEach(tag=>{
+                if(!groups[tag])groups[tag]=[];
+                groups[tag].push(task);
+            });
+        });
+        // Ordenar grupos: primero los que tienen tareas "Atender ya", luego "Planificar", luego el resto
+        const priority=tag=>{
+            const ts=groups[tag];
+            if(ts.some(t=>t.isUrgent&&t.isImportant))return 0;
+            if(ts.some(t=>!t.isUrgent&&t.isImportant))return 1;
+            return 2;
+        };
+        const sortedTags=Object.keys(groups).sort((a,b)=>priority(a)-priority(b)||a.localeCompare(b,'es'));
+        sortedTags.forEach(tag=>{
+            const tagTasks=groups[tag].sort((a,b)=>{
+                // Dentro del grupo: Atender ya primero, luego Planificar, luego resto
+                const pa=(t=>t.isUrgent&&t.isImportant?0:(!t.isUrgent&&t.isImportant?1:2));
+                return pa(a)-pa(b)||(a.dueDate||'').localeCompare(b.dueDate||'');
+            });
+            const hasAtenderYa=tagTasks.some(t=>t.isUrgent&&t.isImportant);
+            const hasPlanificar=tagTasks.some(t=>!t.isUrgent&&t.isImportant);
+            // Color del encabezado del grupo según la tarea más urgente del grupo
+            const headerCls=hasAtenderYa?'bg-red-100 border-red-300 text-red-800':hasPlanificar?'bg-yellow-50 border-yellow-300 text-yellow-800':'bg-gray-100 border-gray-200 text-gray-700';
+            const dot=hasAtenderYa?'bg-red-500':hasPlanificar?'bg-yellow-400':'bg-gray-400';
+            const cardsHtml=tagTasks.map(renderMatrixTaskCard).join('');
+            container.insertAdjacentHTML('beforeend',
+                `<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="flex items-center gap-2 px-4 py-2 border-b ${headerCls}">
+                        <span class="w-2.5 h-2.5 rounded-full ${dot} flex-shrink-0"></span>
+                        <h3 class="font-bold text-sm flex-grow">${tag}</h3>
+                        <span class="text-xs font-semibold opacity-70">${tagTasks.length} tarea${tagTasks.length!==1?'s':''}</span>
+                    </div>
+                    <div class="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">${cardsHtml}</div>
+                </div>`
+            );
         });
     };
 
