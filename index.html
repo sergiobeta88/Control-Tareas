@@ -354,11 +354,31 @@
     </div>
 </div>
 
-<div id="tagManagementModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 hidden opacity-0">
-    <div class="modal-content bg-white rounded-lg shadow-2xl p-8 w-full max-w-md transform scale-95">
-        <h2 class="text-2xl font-bold mb-6">Administrar Etiquetas</h2>
-        <div id="tag-management-list" class="space-y-2 max-h-64 overflow-y-auto"></div>
-        <div class="flex justify-end gap-3 mt-8"><button type="button" id="closeTagManagementModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cerrar</button></div>
+<div id="tagManagementModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-10 z-50 hidden opacity-0 overflow-y-auto">
+    <div class="modal-content bg-white rounded-lg shadow-2xl w-full max-w-lg transform scale-95">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b">
+            <h2 class="text-xl font-bold text-gray-800">🏷 Administrar Etiquetas</h2>
+            <button type="button" id="closeTagManagementModalBtn" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <!-- Tab selector tipo -->
+        <div class="flex border-b">
+            <button id="tagMgmtTabLaboral"  class="tag-mgmt-tab flex-1 py-2 text-sm font-semibold text-blue-600 border-b-2 border-blue-600">Laboral</button>
+            <button id="tagMgmtTabPersonal" class="tag-mgmt-tab flex-1 py-2 text-sm font-semibold text-gray-400 hover:text-gray-600">Personal</button>
+        </div>
+        <!-- Nueva etiqueta -->
+        <div class="px-6 py-3 bg-gray-50 border-b">
+            <div class="flex gap-2">
+                <input type="text" id="tag-mgmt-new-input" placeholder="Nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-400">
+                <button type="button" id="tag-mgmt-add-btn" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-md text-sm hover:bg-blue-700">+ Agregar</button>
+            </div>
+        </div>
+        <!-- Lista de etiquetas -->
+        <div id="tag-management-list" class="divide-y max-h-80 overflow-y-auto"></div>
+        <!-- Footer info -->
+        <div class="px-6 py-3 bg-gray-50 rounded-b-lg border-t">
+            <p class="text-xs text-gray-400">Al eliminar una etiqueta se elimina de todas las tareas que la usan.</p>
+        </div>
     </div>
 </div>
 
@@ -1027,6 +1047,164 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.histNextMonth.addEventListener('click',()=>{histCalMonth++;if(histCalMonth>11){histCalMonth=0;histCalYear++;}renderHistCalendar();});
     dom.histCalDays.addEventListener('click',e=>{const day=e.target.closest('.hist-cal-day');if(day&&!day.classList.contains('empty')&&day.dataset.date)showHistDayDetail(day.dataset.date);});
     dom.histDaysList.addEventListener('click',e=>{const row=e.target.closest('.hist-day-row');if(row?.dataset.date)showHistDayDetail(row.dataset.date);});
+    // ── Gestor de etiquetas ───────────────────────────────────────────────────
+    let tagMgmtView = 'laboral'; // vista activa dentro del modal
+
+    const openTagManagementModal = () => {
+        tagMgmtView = currentView; // abre en la misma vista que el formulario de tarea
+        renderTagManagementList();
+        // Activar tab correcto
+        document.getElementById('tagMgmtTabLaboral').classList.toggle('text-blue-600',tagMgmtView==='laboral');
+        document.getElementById('tagMgmtTabLaboral').classList.toggle('border-b-2',tagMgmtView==='laboral');
+        document.getElementById('tagMgmtTabLaboral').classList.toggle('border-blue-600',tagMgmtView==='laboral');
+        document.getElementById('tagMgmtTabLaboral').classList.toggle('text-gray-400',tagMgmtView!=='laboral');
+        document.getElementById('tagMgmtTabPersonal').classList.toggle('text-blue-600',tagMgmtView==='personal');
+        document.getElementById('tagMgmtTabPersonal').classList.toggle('border-b-2',tagMgmtView==='personal');
+        document.getElementById('tagMgmtTabPersonal').classList.toggle('border-blue-600',tagMgmtView==='personal');
+        document.getElementById('tagMgmtTabPersonal').classList.toggle('text-gray-400',tagMgmtView!=='personal');
+        openModal(dom.tagManagementModal, dom.tagManagementModal.querySelector('.modal-content'));
+    };
+
+    const renderTagManagementList = () => {
+        const tags = allTags[tagMgmtView] || [];
+        const list = dom.tagManagementList;
+        if (!tags.length) {
+            list.innerHTML = '<p class="text-center text-gray-400 py-8 text-sm">No hay etiquetas creadas.</p>';
+            return;
+        }
+        list.innerHTML = tags.map(tag => {
+            // Contar cuántas tareas usan esta etiqueta
+            const count = tasks.filter(t => t.tags?.includes(tag) && (tagMgmtView==='laboral'?(!t.type||t.type==='laboral'):t.type===tagMgmtView)).length;
+            return `<div class="tag-mgmt-row flex items-center gap-3 px-4 py-3 hover:bg-gray-50" data-tag="${tag}">
+                <span class="flex-grow font-medium text-sm text-gray-800 tag-display-name">${tag}</span>
+                <span class="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full whitespace-nowrap">${count} tarea${count!==1?'s':''}</span>
+                <button type="button" class="tag-edit-btn text-blue-500 hover:text-blue-700 text-xs font-semibold px-2 py-1 rounded hover:bg-blue-50" data-tag="${tag}" title="Editar">✎ Editar</button>
+                <button type="button" class="tag-delete-btn text-red-400 hover:text-red-600 text-xs font-semibold px-2 py-1 rounded hover:bg-red-50" data-tag="${tag}" title="Eliminar">✕</button>
+            </div>`;
+        }).join('');
+    };
+
+    const startTagEdit = (oldTag) => {
+        const row = dom.tagManagementList.querySelector(`.tag-mgmt-row[data-tag="${oldTag}"]`);
+        if (!row) return;
+        const displaySpan = row.querySelector('.tag-display-name');
+        const editBtn     = row.querySelector('.tag-edit-btn');
+        const deleteBtn   = row.querySelector('.tag-delete-btn');
+        // Reemplazar span por input + botones confirmar/cancelar
+        displaySpan.outerHTML = `<input type="text" class="tag-edit-input flex-grow p-1.5 border border-blue-400 rounded-md text-sm focus:outline-none" value="${oldTag}" data-old="${oldTag}">`;
+        editBtn.outerHTML     = `<button type="button" class="tag-save-btn bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded hover:bg-blue-700" data-old="${oldTag}">✓ Guardar</button>`;
+        deleteBtn.outerHTML   = `<button type="button" class="tag-cancel-btn text-gray-500 text-xs font-semibold px-2 py-1 rounded hover:bg-gray-100" data-old="${oldTag}">✕ Cancelar</button>`;
+        row.querySelector('.tag-edit-input').focus();
+    };
+
+    const saveTagEdit = (oldTag, newTag) => {
+        newTag = newTag.trim();
+        if (!newTag || newTag === oldTag) { renderTagManagementList(); return; }
+        if ((allTags[tagMgmtView]||[]).includes(newTag)) {
+            alert(`Ya existe una etiqueta llamada "${newTag}".`); return;
+        }
+        // Actualizar en allTags
+        const idx = allTags[tagMgmtView].indexOf(oldTag);
+        if (idx !== -1) allTags[tagMgmtView][idx] = newTag;
+        allTags[tagMgmtView].sort();
+        // Actualizar en todas las tareas que la usaban
+        tasks.forEach(t => {
+            if (t.tags?.includes(oldTag)) {
+                t.tags = t.tags.map(tg => tg === oldTag ? newTag : tg);
+            }
+        });
+        saveData();
+        populateModalSelects();
+        renderFilters();
+        renderTagManagementList();
+        renderMatrix();
+    };
+
+    const deleteTag = (tag) => {
+        const count = tasks.filter(t => t.tags?.includes(tag)).length;
+        const msg = count > 0
+            ? `¿Eliminar la etiqueta "${tag}"? Se eliminará de ${count} tarea${count!==1?'s':''}.`
+            : `¿Eliminar la etiqueta "${tag}"?`;
+        if (!confirm(msg)) return;
+        allTags[tagMgmtView] = (allTags[tagMgmtView]||[]).filter(t => t !== tag);
+        tasks.forEach(t => { if (t.tags) t.tags = t.tags.filter(tg => tg !== tag); });
+        saveData();
+        populateModalSelects();
+        renderFilters();
+        renderTagManagementList();
+        renderMatrix();
+    };
+
+    // Eventos delegados dentro del modal de etiquetas
+    dom.tagManagementList.addEventListener('click', e => {
+        const editBtn   = e.target.closest('.tag-edit-btn');
+        const saveBtn   = e.target.closest('.tag-save-btn');
+        const cancelBtn = e.target.closest('.tag-cancel-btn');
+        const deleteBtn = e.target.closest('.tag-delete-btn');
+        if (editBtn)   { startTagEdit(editBtn.dataset.tag); return; }
+        if (saveBtn)   { const inp = dom.tagManagementList.querySelector('.tag-edit-input'); saveTagEdit(saveBtn.dataset.old, inp ? inp.value : saveBtn.dataset.old); return; }
+        if (cancelBtn) { renderTagManagementList(); return; }
+        if (deleteBtn) { deleteTag(deleteBtn.dataset.tag); return; }
+    });
+    // Enter en input de edición
+    dom.tagManagementList.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            const inp = e.target.closest('.tag-edit-input');
+            if (inp) { saveTagEdit(inp.dataset.old, inp.value); }
+        }
+        if (e.key === 'Escape') {
+            const inp = e.target.closest('.tag-edit-input');
+            if (inp) renderTagManagementList();
+        }
+    });
+    // Agregar nueva etiqueta desde el modal
+    document.getElementById('tag-mgmt-add-btn').addEventListener('click', () => {
+        const v = document.getElementById('tag-mgmt-new-input').value.trim();
+        if (!v) return;
+        if (!(allTags[tagMgmtView]||[]).includes(v)) {
+            if (!allTags[tagMgmtView]) allTags[tagMgmtView] = [];
+            allTags[tagMgmtView].push(v);
+            allTags[tagMgmtView].sort();
+            saveData();
+            populateModalSelects();
+            renderFilters();
+        }
+        document.getElementById('tag-mgmt-new-input').value = '';
+        renderTagManagementList();
+    });
+    document.getElementById('tag-mgmt-new-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); document.getElementById('tag-mgmt-add-btn').click(); }
+    });
+    // Tabs del modal
+    document.getElementById('tagMgmtTabLaboral').addEventListener('click', () => {
+        tagMgmtView = 'laboral';
+        ['tagMgmtTabLaboral','tagMgmtTabPersonal'].forEach(id => {
+            const el = document.getElementById(id);
+            const active = id === 'tagMgmtTabLaboral';
+            el.classList.toggle('text-blue-600', active);
+            el.classList.toggle('border-b-2', active);
+            el.classList.toggle('border-blue-600', active);
+            el.classList.toggle('text-gray-400', !active);
+        });
+        renderTagManagementList();
+    });
+    document.getElementById('tagMgmtTabPersonal').addEventListener('click', () => {
+        tagMgmtView = 'personal';
+        ['tagMgmtTabLaboral','tagMgmtTabPersonal'].forEach(id => {
+            const el = document.getElementById(id);
+            const active = id === 'tagMgmtTabPersonal';
+            el.classList.toggle('text-blue-600', active);
+            el.classList.toggle('border-b-2', active);
+            el.classList.toggle('border-blue-600', active);
+            el.classList.toggle('text-gray-400', !active);
+        });
+        renderTagManagementList();
+    });
+    // Botón cerrar modal
+    dom.closeTagManagementModalBtn.addEventListener('click', () => closeModal(dom.tagManagementModal, dom.tagManagementModal.querySelector('.modal-content')));
+    // Botón "Administrar" desde el formulario de tarea
+    dom.manageTagsBtn.addEventListener('click', openTagManagementModal);
+
     dom.viewLaboralBtn.addEventListener('click',()=>setMainView('laboral'));
     dom.viewPersonalBtn.addEventListener('click',()=>setMainView('personal'));
     dom.openModalBtn.addEventListener('click',()=>openEditTaskModal({}));
