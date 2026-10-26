@@ -265,8 +265,8 @@
 </div>
 
 <!-- ══ MODALES ══ -->
-<div id="taskModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-10 z-50 hidden opacity-0 overflow-y-auto">
-    <div id="modal-content" class="modal-content bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-2xl transform scale-95">
+<div id="taskModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-6 z-50 hidden opacity-0 overflow-y-auto">
+    <div id="modal-content" class="modal-content bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-2xl transform scale-95 mb-6">
         <form id="taskForm">
             <input type="hidden" id="taskId">
             <h2 id="modal-title" class="text-2xl font-bold mb-6">Nueva Tarea</h2>
@@ -292,9 +292,17 @@
                 <div class="flex gap-2 mt-2"><input type="text" id="new-responsible-input" placeholder="Crear nuevo responsable..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-responsible-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
             </div>
             <div class="mb-4">
-                <div class="flex justify-between items-center mb-1"><label class="block text-sm font-medium text-gray-700">Etiquetas</label><button type="button" id="manage-tags-btn" class="text-xs text-blue-600 hover:underline">Administrar</button></div>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm font-medium text-gray-700">Etiquetas</label>
+                    <button type="button" id="manage-tags-btn" class="text-xs text-blue-600 hover:underline">Administrar</button>
+                </div>
+                <!-- Buscador de etiquetas -->
+                <input type="text" id="tag-search-input" placeholder="🔍 Buscar etiqueta..." class="w-full p-2 border border-gray-300 rounded-md text-sm mb-1 focus:outline-none focus:border-blue-400">
                 <select id="tags-select" multiple class="w-full p-2 border border-gray-300 rounded-md h-24"></select>
-                <div class="flex gap-2 mt-2"><input type="text" id="new-tag-input" placeholder="Crear nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm"><button type="button" id="add-tag-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button></div>
+                <div class="flex gap-2 mt-2">
+                    <input type="text" id="new-tag-input" placeholder="Crear nueva etiqueta..." class="flex-grow p-2 border border-gray-300 rounded-md text-sm">
+                    <button type="button" id="add-tag-btn" class="bg-gray-200 px-4 rounded-md hover:bg-gray-300 text-sm">Añadir</button>
+                </div>
             </div>
             <div id="delegated-container" class="mb-6"><label class="flex items-center"><input type="checkbox" id="isDelegated" class="h-4 w-4 text-indigo-600 rounded"><span class="ml-2 text-sm">Marcar como Delegada</span></label></div>
             <div class="border-t pt-4 mt-6">
@@ -448,7 +456,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         openModalBtn:$('openModalBtn'), closeModalBtn:$('closeModalBtn'),
         taskForm:$('taskForm'), deleteTaskBtn:$('deleteTaskBtn'),
         q1Tasks:$('q1-tasks'), q2Tasks:$('q2-tasks'), q3Tasks:$('q3-tasks'), q4Tasks:$('q4-tasks'),
-        newTagInput:$('new-tag-input'), addTagBtn:$('add-tag-btn'),
+        newTagInput:$('new-tag-input'), addTagBtn:$('add-tag-btn'), tagSearchInput:$('tag-search-input'),
         newResponsibleInput:$('new-responsible-input'), addResponsibleBtn:$('add-responsible-btn'),
         plannerSection:$('planner-section'), allTasksList:$('all-tasks-list'),
         completedTasksList:$('completed-tasks-list'), searchCompletedTasks:$('search-completed-tasks'),
@@ -824,24 +832,25 @@ document.addEventListener('DOMContentLoaded',()=>{
         const sortedTags=Object.keys(groups).sort((a,b)=>priority(a)-priority(b)||a.localeCompare(b,'es'));
         sortedTags.forEach(tag=>{
             const tagTasks=groups[tag].sort((a,b)=>{
-                // Dentro del grupo: Atender ya primero, luego Planificar, luego resto
                 const pa=(t=>t.isUrgent&&t.isImportant?0:(!t.isUrgent&&t.isImportant?1:2));
                 return pa(a)-pa(b)||(a.dueDate||'').localeCompare(b.dueDate||'');
             });
             const hasAtenderYa=tagTasks.some(t=>t.isUrgent&&t.isImportant);
             const hasPlanificar=tagTasks.some(t=>!t.isUrgent&&t.isImportant);
-            // Color del encabezado del grupo según la tarea más urgente del grupo
             const headerCls=hasAtenderYa?'bg-red-100 border-red-300 text-red-800':hasPlanificar?'bg-yellow-50 border-yellow-300 text-yellow-800':'bg-gray-100 border-gray-200 text-gray-700';
             const dot=hasAtenderYa?'bg-red-500':hasPlanificar?'bg-yellow-400':'bg-gray-400';
             const cardsHtml=tagTasks.map(renderMatrixTaskCard).join('');
+            // encodeURIComponent para pasar la etiqueta al botón de nueva tarea
+            const safeTag=encodeURIComponent(tag);
             container.insertAdjacentHTML('beforeend',
-                `<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                `<div class="bg-white rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-2 px-4 py-2 border-b ${headerCls}">
                         <span class="w-2.5 h-2.5 rounded-full ${dot} flex-shrink-0"></span>
                         <h3 class="font-bold text-sm flex-grow">${tag}</h3>
-                        <span class="text-xs font-semibold opacity-70">${tagTasks.length} tarea${tagTasks.length!==1?'s':''}</span>
+                        <span class="text-xs font-semibold opacity-70 mr-2">${tagTasks.length} tarea${tagTasks.length!==1?'s':''}</span>
+                        <button type="button" class="new-task-in-tag-btn flex-shrink-0 text-[11px] font-semibold px-2 py-1 rounded border ${hasAtenderYa?'border-red-400 text-red-700 hover:bg-red-100':hasPlanificar?'border-yellow-500 text-yellow-800 hover:bg-yellow-100':'border-gray-400 text-gray-600 hover:bg-gray-200'} transition" data-tag="${safeTag}">+ Nueva tarea</button>
                     </div>
-                    <div class="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">${cardsHtml}</div>
+                    <div class="p-3 grid grid-cols-2 gap-2">${cardsHtml}</div>
                 </div>`
             );
         });
@@ -1010,6 +1019,9 @@ document.addEventListener('DOMContentLoaded',()=>{
         }
         dom.dateControlsContainer.classList.toggle('hidden',isRep);dom.delegatedContainer.classList.toggle('hidden',isRep);dom.progressContainerModal.classList.toggle('hidden',isRep);
         dom.plannedDateContainer.style.display=(dom.taskForm.isDelegated.checked||isRep)?'none':'block';
+        // Limpiar buscador de etiquetas y mostrar todas las opciones
+        dom.tagSearchInput.value='';
+        Array.from(dom.tagsSelect.options).forEach(o=>{o.style.display='';});
         renderSubtasksInModal();openTaskModal();
     };
     const saveTask=e=>{
@@ -1235,6 +1247,33 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.taskForm.progress.addEventListener('input',e=>{dom.progressLabel.textContent=`${e.target.value}%`;});
     dom.addResponsibleBtn.addEventListener('click',()=>{const v=dom.newResponsibleInput.value.trim();if(v){const vt=dom.taskForm.taskType.value;if(!allResponsibles[vt].includes(v)){allResponsibles[vt].push(v);allResponsibles[vt].sort();saveData();populateModalSelects();renderFilters();}dom.responsibleSelect.value=v;dom.newResponsibleInput.value='';}});
     dom.addTagBtn.addEventListener('click',()=>{const v=dom.newTagInput.value.trim();if(v){const vt=dom.taskForm.taskType.value;if(!allTags[vt].includes(v)){allTags[vt].push(v);allTags[vt].sort();saveData();populateModalSelects();renderFilters();}Array.from(dom.tagsSelect.options).forEach(o=>{if(o.value===v)o.selected=true;});dom.newTagInput.value='';}});
+
+    // ── Buscador de etiquetas ────────────────────────────────────────────────
+    dom.tagSearchInput.addEventListener('input',()=>{
+        const q=dom.tagSearchInput.value.trim().toLowerCase();
+        Array.from(dom.tagsSelect.options).forEach(o=>{
+            o.style.display=(!q||o.value.toLowerCase().includes(q))?'':'none';
+        });
+    });
+
+    // ── Nueva tarea desde botón de grupo de etiqueta ─────────────────────────
+    document.getElementById('tag-groups-container').addEventListener('click',e=>{
+        const btn=e.target.closest('.new-task-in-tag-btn');
+        if(!btn)return;
+        const tag=decodeURIComponent(btn.dataset.tag);
+        openEditTaskModal({});
+        // Esperar a que populateModalSelects() llene el select antes de seleccionar
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            dom.tagSearchInput.value='';
+            Array.from(dom.tagsSelect.options).forEach(o=>{
+                o.style.display='';
+                o.selected=(o.value===tag);
+            });
+            const opt=Array.from(dom.tagsSelect.options).find(o=>o.value===tag);
+            if(opt)opt.scrollIntoView({block:'nearest'});
+        }));
+    });
+
     dom.isDelegatedCheckbox.addEventListener('change',e=>{dom.plannedDateContainer.style.display=e.target.checked?'none':'block';if(e.target.checked)plannedDatepicker.clear();});
     dom.isRepetitiveCheckbox.addEventListener('change',e=>{const r=e.target.checked;dom.dateControlsContainer.classList.toggle('hidden',r);dom.delegatedContainer.classList.toggle('hidden',r);dom.progressContainerModal.classList.toggle('hidden',r);dom.plannedDateContainer.style.display=r?'none':(dom.isDelegatedCheckbox.checked?'none':'block');if(r){plannedDatepicker.clear();dueDatepicker.clear();dom.isDelegatedCheckbox.checked=false;}});
     dom.addSubtaskBtn.addEventListener('click',()=>{const t=dom.newSubtaskText.value.trim();if(!t)return;currentSubtasks.push({id:Date.now().toString(),text:t,responsible:dom.newSubtaskResponsible.value.trim(),isCompleted:false});dom.newSubtaskText.value='';dom.newSubtaskResponsible.value='';renderSubtasksInModal();});
