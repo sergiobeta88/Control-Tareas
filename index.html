@@ -64,6 +64,8 @@
         .hist-day-row { transition:all .15s; }
         .hist-day-row:hover { background:#f0f4ff; }
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
+        /* ── Subtask tooltip global ───────────────────────── */
+        #subtask-global-tip { pointer-events:none; transition:opacity .15s; }
         /* ── Google Calendar ──────────────────────────────── */
         #gcal-status.gcal-connected { background-color:#d1fae5;color:#065f46;border-color:#6ee7b7; }
         #gcal-status.gcal-disconnected { background-color:#f3f4f6;color:#374151;border-color:#d1d5db; }
@@ -263,6 +265,9 @@
         </div>
     </div>
 </div>
+
+<!-- ══ TOOLTIP GLOBAL DE SUBTAREAS ══ -->
+<div id="subtask-global-tip" class="fixed hidden z-[9999] w-72 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 text-[11px]"></div>
 
 <!-- ══ MODALES ══ -->
 <div id="taskModal" class="modal fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start py-6 z-50 hidden opacity-0 overflow-y-auto">
@@ -825,7 +830,15 @@ document.addEventListener('DOMContentLoaded',()=>{
             ? `<span class="text-[9px] font-bold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full">Planificar</span>`
             : '';
         const tagPillsHtml=(task.tags&&task.tags.length)?`<div class="flex flex-wrap gap-1 mt-1">${task.tags.map(tg=>{const cs=tagColorStyles(tg);return cs.pill?`<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style="${cs.pill}">${tg}</span>`:`<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">${tg}</span>`;}).join('')}</div>`:'';
-        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls} overflow-hidden" data-id="${task.id}">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<p class="text-xs font-bold text-indigo-600 mt-0.5">${task.progress||0}%</p></div>`;
+        // Badge de subtareas — indicador visible en la tarjeta
+        const subs=task.subtasks||[];
+        const subsDone=subs.filter(s=>s.isCompleted).length;
+        const checklistBadge=subs.length>0
+            ?`<span class="text-[10px] text-gray-400 flex items-center gap-0.5">☰ ${subsDone}/${subs.length}</span>`
+            :'';
+        // data-subtasks guarda el JSON para que el tooltip global lo lea
+        const subsAttr=subs.length>0?` data-subtasks='${JSON.stringify(subs).replace(/'/g,"&#39;")}'`:'';
+        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls}"${subsAttr} data-id="${task.id}" style="overflow:visible">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<div class="flex items-center justify-between mt-0.5"><p class="text-xs font-bold text-indigo-600">${task.progress||0}%</p>${checklistBadge}</div></div>`;
     };
     const renderMatrix=()=>{
         // Limpiar contenedor de grupos por etiqueta
@@ -1361,11 +1374,25 @@ document.addEventListener('DOMContentLoaded',()=>{
         setStatus('connecting','⟳ Conectando...');
         const local={tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}};
         applyData(local);
+        gcalLoadCached(); // restaurar reuniones GCal desde caché local antes de renderizar
         dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};
         updateHistBadge();
         switchView('combined');
         const[fbData,histData]=await Promise.all([Promise.race([fbLoad(),new Promise(r=>setTimeout(()=>r(null),8000))]),fbLoadHistory()]);
-        if(fbData?.tasks){applyData(fbData);setStatus('connected','☁ Conectado');if(window._fbAPI){if(fbUnsubscribe)fbUnsubscribe();fbUnsubscribe=window._fbAPI.subscribe(d=>{applyData(d);setStatus('connected','☁ Sincronizado');});window._fbAPI.subscribeHistory(h=>{dailyHistory=h;updateHistBadge();});}}else setStatus('local','💾 Modo local');
+        if(fbData?.tasks){
+            applyData(fbData);
+            gcalLoadCached(); // volver a inyectar GCal después de que Firebase sobreescribe meetings
+            setStatus('connected','☁ Conectado');
+            if(window._fbAPI){
+                if(fbUnsubscribe)fbUnsubscribe();
+                fbUnsubscribe=window._fbAPI.subscribe(d=>{
+                    applyData(d);
+                    gcalLoadCached(); // mantener reuniones GCal al recibir updates en tiempo real
+                    setStatus('connected','☁ Sincronizado');
+                });
+                window._fbAPI.subscribeHistory(h=>{dailyHistory=h;updateHistBadge();});
+            }
+        }else setStatus('local','💾 Modo local');
         if(histData?.snapshots){dailyHistory=histData;updateHistBadge();}
         scheduleMidnightSnapshot();
     };
@@ -1406,10 +1433,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 gcalToken = resp.access_token;
                 localStorage.setItem('gcal_token', gcalToken);
                 gcalSetStatus('gcal-connected', '✓ Google Calendar');
-                await gcalSync();
-                // Sincronizar cada 5 minutos mientras la app está abierta
-                clearInterval(gcalSyncInterval);
-                gcalSyncInterval = setInterval(gcalSync, 5 * 60 * 1000);
+                await gcalSync(); // sincronización inicial al conectar
             }
         });
         client.requestAccessToken();
@@ -1421,6 +1445,8 @@ document.addEventListener('DOMContentLoaded',()=>{
         }
         gcalToken = null;
         localStorage.removeItem('gcal_token');
+        localStorage.removeItem('gcal_meetings');
+        localStorage.removeItem('gcal_sync_ts');
         // Eliminar reuniones importadas de GCal del array local
         const before = meetings.length;
         meetings = meetings.filter(m => !m.fromGcal);
@@ -1475,13 +1501,16 @@ document.addEventListener('DOMContentLoaded',()=>{
         try {
             const events = await gcalFetchEvents('primary');
             const newMtgs = events.map(gcalEventToMeeting).filter(Boolean);
-            // Reemplazar eventos GCal en memoria — SIN guardar en Firebase.
-            // saveData() ya excluye fromGcal, pero evitamos la llamada por completo
-            // para no tocar el indicador de Firebase durante la sincronización de GCal.
+            // Guardar en localStorage para persistir entre recargas de página.
+            // Firebase NO se toca para no disparar el indicador de error.
+            localStorage.setItem('gcal_meetings', JSON.stringify(newMtgs));
+            localStorage.setItem('gcal_sync_ts', new Date().toISOString());
+            // Actualizar array en memoria
             meetings = meetings.filter(m => !m.fromGcal);
             meetings.push(...newMtgs);
-            renderAll(); // solo re-pinta, Firebase no se toca
-            gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length})`);
+            renderAll();
+            const ts = new Date().toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+            gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length}) · ${ts}`);
         } catch(e) {
             console.error('GCal sync error:', e);
             gcalSetStatus('gcal-connected', '⚠ GCal error');
@@ -1489,10 +1518,40 @@ document.addEventListener('DOMContentLoaded',()=>{
         if (ind) ind.classList.add('hidden');
     };
 
-    // Toggle: si ya tiene token conecta directamente, si no pide login
+    // Carga las reuniones de GCal desde localStorage (sin red, instantáneo)
+    const gcalLoadCached = () => {
+        try {
+            const raw = localStorage.getItem('gcal_meetings');
+            if (!raw) return;
+            const cached = JSON.parse(raw);
+            if (!Array.isArray(cached) || !cached.length) return;
+            meetings = meetings.filter(m => !m.fromGcal);
+            meetings.push(...cached);
+            const ts = localStorage.getItem('gcal_sync_ts');
+            const label = ts
+                ? `✓ GCal (${cached.length}) · ${new Date(ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`
+                : `✓ GCal (${cached.length})`;
+            gcalSetStatus('gcal-connected', label);
+        } catch(e) {
+            console.warn('gcalLoadCached error:', e);
+        }
+    };
+
+    // Toggle: conectado → ofrece sincronizar ahora o desconectar | desconectado → login
     window._gcalToggle = () => {
-        if (gcalToken) {
-            if (confirm('¿Desconectar Google Calendar? Se eliminarán las reuniones importadas.')) gcalLogout();
+        if (gcalToken || localStorage.getItem('gcal_meetings')) {
+            // Menú de opciones cuando ya hay datos de GCal
+            const opt = confirm('Google Calendar conectado.\n\n✓ Aceptar → Sincronizar ahora\n✕ Cancelar → Desconectar y borrar reuniones importadas');
+            if (opt) {
+                if (gcalToken) {
+                    gcalSync();
+                } else {
+                    // Token expiró — pedir nuevo login para re-sincronizar
+                    gcalLogin();
+                }
+            } else {
+                if (confirm('¿Seguro que deseas desconectar Google Calendar? Se eliminarán las reuniones importadas.')) gcalLogout();
+            }
         } else {
             gcalLogin();
         }
@@ -1502,10 +1561,76 @@ document.addEventListener('DOMContentLoaded',()=>{
     // el usuario deberá volver a hacer click en el badge al recargar)
     // (Nota: los access_token de Google expiran en 1h, se pedirá nueva autorización automáticamente)
 
+    // ── Tooltip global de subtareas ───────────────────────────────────────────
+    // Un único div fixed que se posiciona junto al cursor al hacer hover sobre
+    // cualquier tarjeta de tarea que tenga data-subtasks.
+    // Al estar en el root del DOM no hay ningún contenedor que lo recorte.
+    (() => {
+        const tip = document.getElementById('subtask-global-tip');
+        let hideTimer = null;
+
+        const buildTipHtml = (subs) => {
+            const done = subs.filter(s => s.isCompleted).length;
+            const allDone = done === subs.length;
+            return `<p class="font-bold text-gray-700 border-b border-gray-100 pb-1.5 mb-2 flex items-center justify-between">
+                        <span>📋 Checklist</span>
+                        <span class="text-[10px] font-semibold ${allDone ? 'text-green-600' : 'text-gray-400'}">${done}/${subs.length}</span>
+                    </p>`
+                + subs.map(s => `<div class="flex items-start gap-2 py-0.5">
+                        <span class="mt-0.5 w-3.5 h-3.5 flex-shrink-0 rounded-full border flex items-center justify-center text-[8px]
+                            ${s.isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'}">
+                            ${s.isCompleted ? '✓' : ''}
+                        </span>
+                        <span class="leading-snug ${s.isCompleted ? 'line-through text-gray-400' : 'text-gray-700'}">
+                            ${s.text}${s.responsible ? `<span class="ml-1 text-gray-400 not-italic">(${s.responsible})</span>` : ''}
+                        </span>
+                    </div>`).join('');
+        };
+
+        const positionTip = (e) => {
+            const margin = 12;
+            const tw = tip.offsetWidth || 288;
+            const th = tip.offsetHeight || 200;
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            // Preferir mostrar a la derecha; si no cabe, a la izquierda
+            let left = e.clientX + margin;
+            if (left + tw > vw - 8) left = e.clientX - tw - margin;
+            // Preferir debajo del cursor; si no cabe, encima
+            let top = e.clientY + margin;
+            if (top + th > vh - 8) top = e.clientY - th - margin;
+            tip.style.left = left + 'px';
+            tip.style.top  = top  + 'px';
+        };
+
+        document.addEventListener('mouseover', e => {
+            const card = e.target.closest('.task-card[data-subtasks]');
+            if (!card) return;
+            clearTimeout(hideTimer);
+            try {
+                const subs = JSON.parse(card.dataset.subtasks);
+                if (!subs.length) return;
+                tip.innerHTML = buildTipHtml(subs);
+                tip.classList.remove('hidden');
+                positionTip(e);
+            } catch(_) {}
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (!tip.classList.contains('hidden')) positionTip(e);
+        });
+
+        document.addEventListener('mouseout', e => {
+            const card = e.target.closest('.task-card[data-subtasks]');
+            if (!card) return;
+            hideTimer = setTimeout(() => tip.classList.add('hidden'), 120);
+        });
+    })();
+
     setInterval(checkAllAlerts,60000);
     setInterval(updatePlannerClock,1000);
     if(window._fbReady)initApp();
-    else{window.addEventListener('fbReady',initApp,{once:true});setTimeout(()=>{if(!window._fbReady){applyData({tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}});dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};updateHistBadge();switchView('combined');setStatus('local','💾 Modo local');scheduleMidnightSnapshot();}},5000);}
+    else{window.addEventListener('fbReady',initApp,{once:true});setTimeout(()=>{if(!window._fbReady){applyData({tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}});gcalLoadCached();dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};updateHistBadge();switchView('combined');setStatus('local','💾 Modo local');scheduleMidnightSnapshot();}},5000);}
 });
 </script>
 </body>
