@@ -64,6 +64,10 @@
         .hist-day-row { transition:all .15s; }
         .hist-day-row:hover { background:#f0f4ff; }
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
+        /* ── Arrastrar tareas al cronograma ───────────────── */
+        .task-card[draggable="true"].dragging { opacity:.45; }
+        .planner-drop-zone.drop-active { background:rgba(59,130,246,.04); outline:2px dashed #93c5fd; outline-offset:2px; border-radius:6px; }
+        #planner-drop-preview { position:absolute; left:56px; right:0; z-index:30; pointer-events:none; border:2px dashed #2563eb; background:rgba(59,130,246,.18); border-radius:6px; padding:2px 6px; font-size:11px; font-weight:700; color:#1d4ed8; overflow:hidden; }
         /* ── Subtask tooltip global ───────────────────────── */
         #subtask-global-tip { pointer-events:none; transition:opacity .15s; }
         /* ── Alerta modal de reuniones ────────────────────── */
@@ -714,7 +718,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     // ── Flatpickr ────────────────────────────────────────────────────────────
     const fpL={firstDayOfWeek:1,weekdays:{shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"]},months:{shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]}};
     const fpB={dateFormat:"Y-m-d",altInput:true,altFormat:"D, M j, Y",locale:fpL};
-    const fpT={enableTime:true,noCalendar:true,dateFormat:"H:i",time_24hr:true,minuteIncrement:15};
+    const fpT={enableTime:true,noCalendar:true,dateFormat:"H:i",time_24hr:true,minuteIncrement:15,position:"above"}; // "above": el desplegable no debe tapar los botones Guardar/Cancelar
     const dueDatepicker    =flatpickr("#dueDate",fpB);
     const plannedDatepicker=flatpickr("#plannedDate",{...fpB,onChange(sd){dom.timeContainerModal.classList.toggle('hidden',!sd.length);if(!sd.length){startTP.clear();endTP.clear();}}});
     const filterDatepicker =flatpickr("#filter-date",{...fpB,mode:"range",onChange:[]});
@@ -1053,7 +1057,8 @@ document.addEventListener('DOMContentLoaded',()=>{
             :'';
         // data-subtasks guarda el JSON para que el tooltip global lo lea
         const subsAttr=subs.length>0?` data-subtasks='${JSON.stringify(subs).replace(/'/g,"&#39;")}'`:'';
-        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls}"${subsAttr} data-id="${task.id}" style="overflow:visible">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<div class="flex items-center justify-between mt-0.5"><p class="text-xs font-bold text-indigo-600">${task.progress||0}%</p>${checklistBadge}</div></div>`;
+        const dragAttr=task.isDelegated?'':' draggable="true" title="Arrastra al cronograma para agendar"';
+        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls}${task.isDelegated?'':' cursor-grab'}"${subsAttr}${dragAttr} data-id="${task.id}" style="overflow:visible">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<div class="flex items-center justify-between mt-0.5"><p class="text-xs font-bold text-indigo-600">${task.progress||0}%</p>${checklistBadge}</div></div>`;
     };
     const renderMatrix=()=>{
         // Limpiar contenedor de grupos por etiqueta
@@ -1161,7 +1166,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         let cnt=0,cd=new Date(today);
         while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive&&mv(t));const dm=meetings.filter(m=>m.date===ds&&mv(m)).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="meeting-card bg-cyan-50 border border-cyan-200 p-1.5 rounded text-[10px]" data-id="${m.id}">📞 <span class="font-semibold text-cyan-800">${m.startTime?m.startTime+' – ':''}</span>${m.title}${m.fromGcal?'<span class="gcal-badge ml-1">GCal</span>':''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
-        dom.plannerSection.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh)}</div></div><div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar</h4><div class="flex flex-wrap gap-2">${unsched.length>0?unsched.map(t=>`<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join(''):'<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div></div><div>${renderRepetitiveChecklist(todayStr,false)}${upHtml}</div></div>`;
+        dom.plannerSection.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex flex-wrap justify-between items-center mb-6 gap-4"><h3 class="text-xl font-bold capitalize">Hoy, ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative planner-drop-zone" data-sh="${sh}" data-eh="${eh}" data-hh="${hh}" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh)}</div></div><div class="mt-8"><h4 class="font-bold text-gray-700 mb-2 text-sm">Tareas por Agendar</h4><div class="flex flex-wrap gap-2">${unsched.length>0?unsched.map(t=>`<div class="unscheduled-task task-card bg-white p-2 rounded-md shadow-sm border text-[11px]" data-id="${t.id}">${t.description}</div>`).join(''):'<p class="text-xs text-gray-400">No hay tareas sin agendar.</p>'}</div></div></div><div>${renderRepetitiveChecklist(todayStr,false)}${upHtml}</div></div>`;
         updatePlannerClock();
     };
     const renderCombinedPlanner=()=>{
@@ -1238,14 +1243,14 @@ document.addEventListener('DOMContentLoaded',()=>{
         const dr=filterMtgDP.selectedDates,mv=m=>currentView==='laboral'?(!m.type||m.type==='laboral'):m.type===currentView;
         const f=meetings.filter(m=>{if(!mv(m))return false;if(dr.length>0){const md=new Date(m.date+'T00:00:00');if(dr.length===1)return md.getTime()===dr[0].getTime();if(dr.length===2)return md>=dr[0]&&md<=dr[1];}return true;}).sort((a,b)=>new Date(a.date)-new Date(b.date)||a.startTime.localeCompare(b.startTime));
         const pend=f.filter(m=>!m.completed);
-        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${m.startTime||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded"></div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
+        dom.allMeetingsList.innerHTML=pend.length>0?pend.map(m=>`<div class="meeting-card-full flex items-center p-4 rounded-lg border bg-white border-gray-200" data-id="${m.id}"><div class="flex-grow"><p class="font-bold text-lg">${m.title}</p><p class="text-sm text-gray-600">${formatDateDisplay(m.date)} a las ${m.startTime||'N/A'}</p></div><div class="flex items-center ml-4"><label class="mr-2 text-sm font-medium text-gray-700">Realizada:</label><input type="checkbox" data-id="${m.id}" class="complete-meeting-cb h-5 w-5 text-blue-600 rounded">${m.fromGcal?'<span class="gcal-badge ml-3">GCal</span>':`<button type="button" class="delete-meeting-btn ml-3 text-red-500 hover:text-white hover:bg-red-600 border border-red-300 rounded-md px-2 py-1 text-sm transition" data-id="${m.id}" title="Eliminar reunión">🗑 Eliminar</button>`}</div></div>`).join(''):'<p class="text-center text-gray-500">No hay reuniones pendientes.</p>';
         let comp=meetings.filter(m=>m.completed&&mv(m));const sr=filters.completedMeetingSearch.toLowerCase().trim(),hdr=filters.historyMeetingDateRange;
         if(sr)comp=comp.filter(m=>m.title.toLowerCase().includes(sr));
         if(hdr.length===2)comp=comp.filter(m=>{const d=new Date(m.date+'T00:00:00');return d>=hdr[0]&&d<=hdr[1];});
         comp.sort((a,b)=>new Date(b.date)-new Date(a.date));
         const tot=comp.length;
         if(!filters.showAllCompletedMeetings&&!sr&&hdr.length===0){comp=comp.slice(0,5);dom.toggleAllCompletedMeetings.textContent=`Ver Todo (${tot})`;}else dom.toggleAllCompletedMeetings.textContent="Ver Recientes";
-        dom.completedMeetingsList.innerHTML=comp.length>0?comp.map(m=>`<div class="meeting-card-full p-3 rounded-lg border bg-green-50 border-green-200"><p class="font-bold line-through text-gray-600">${m.title}</p><p class="text-xs text-gray-500">${formatDateDisplay(m.date)} | Realizada</p></div>`).join(''):`<p class="text-center text-gray-400 text-sm py-4">Sin historial.</p>`;
+        dom.completedMeetingsList.innerHTML=comp.length>0?comp.map(m=>`<div class="meeting-card-full p-3 rounded-lg border bg-green-50 border-green-200 flex items-center justify-between gap-3"><div class="min-w-0"><p class="font-bold line-through text-gray-600">${m.title}</p><p class="text-xs text-gray-500">${formatDateDisplay(m.date)} | Realizada</p></div>${m.fromGcal?'<span class="gcal-badge">GCal</span>':`<button type="button" class="delete-meeting-btn flex-shrink-0 text-red-500 hover:text-white hover:bg-red-600 border border-red-300 rounded-md px-2 py-1 text-xs transition" data-id="${m.id}" title="Eliminar reunión">🗑</button>`}</div>`).join(''):`<p class="text-center text-gray-400 text-sm py-4">Sin historial.</p>`;
     };
     const populateModalSelects=()=>{const resp=allResponsibles[currentView]||[];dom.responsibleSelect.innerHTML='<option value="">-- Sin Asignar --</option>'+resp.map(r=>`<option value="${r}">${r}</option>`).join('');dom.tagsSelect.innerHTML=(allTags[currentView]||[]).map(t=>`<option value="${t}">${t}</option>`).join('');};
     const renderFilters=()=>{
@@ -1295,7 +1300,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
     const openMeetingModal=()=>openModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'));
     const closeMeetingModal=()=>closeModal(dom.meetingModal,dom.meetingModal.querySelector('.modal-content'),()=>{dom.meetingForm.reset();dom.meetingForm.meetingId.value='';dom.deleteMeetingBtn.classList.add('hidden');meetingDatepicker.clear();mtgStartTP.clear();mtgEndTP.clear();});
-    const openEditMeetingModal=m=>{dom.meetingForm.reset();if(m?.id){dom.meetingModalTitle.innerText='Editar Reunión';dom.meetingForm.meetingId.value=m.id;dom.meetingForm.meetingType.value=m.type||'laboral';dom.meetingForm.meetingTitle.value=m.title;meetingDatepicker.setDate(m.date);if(m.startTime){mtgStartTP.setDate(m.startTime);mtgEndTP.setDate(m.endTime);}dom.deleteMeetingBtn.classList.remove('hidden');}else{dom.meetingModalTitle.innerText='Nueva Reunión';dom.meetingForm.meetingId.value='';dom.meetingForm.meetingType.value=currentView;dom.deleteMeetingBtn.classList.add('hidden');}openMeetingModal();};
+    const openEditMeetingModal=m=>{if(m?.fromGcal){alert('Esta reunión viene de Google Calendar y es de solo lectura.\n\nPara editarla o eliminarla hazlo en Google Calendar y luego vuelve a sincronizar.');return;}dom.meetingForm.reset();if(m?.id){dom.meetingModalTitle.innerText='Editar Reunión';dom.meetingForm.meetingId.value=m.id;dom.meetingForm.meetingType.value=m.type||'laboral';dom.meetingForm.meetingTitle.value=m.title;meetingDatepicker.setDate(m.date);if(m.startTime){mtgStartTP.setDate(m.startTime);mtgEndTP.setDate(m.endTime);}dom.deleteMeetingBtn.classList.remove('hidden');}else{dom.meetingModalTitle.innerText='Nueva Reunión';dom.meetingForm.meetingId.value='';dom.meetingForm.meetingType.value=currentView;dom.deleteMeetingBtn.classList.add('hidden');}openMeetingModal();};
     const saveMeeting=e=>{e.preventDefault();const id=dom.meetingForm.meetingId.value,st=dom.meetingForm.meetingStartTime.value,et=dom.meetingForm.meetingEndTime.value;if(st&&et&&parseTime(et)<=parseTime(st)){alert('La hora de fin debe ser posterior.');return;}const md={type:dom.meetingForm.meetingType.value,title:dom.meetingForm.meetingTitle.value,date:dom.meetingForm.meetingDate.value,startTime:st,endTime:et};if(id)meetings[meetings.findIndex(m=>m.id===id)]={...meetings.find(m=>m.id===id),...md};else meetings.push({id:Date.now().toString(),completed:false,...md});saveData();renderAll();closeMeetingModal();};
     const openScheduleModal=tid=>{const task=tasks.find(t=>t.id===tid);if(!task)return;dom.scheduleForm.scheduleTaskId.value=tid;dom.scheduleTaskDescription.textContent=task.description;schStartTP.clear();schEndTP.clear();openModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'));};
     const closeScheduleModal=()=>closeModal(dom.scheduleModal,dom.scheduleModal.querySelector('.modal-content'),()=>dom.scheduleForm.reset());
@@ -1586,6 +1591,84 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
     const exportTasksToPDF=()=>{const{jsPDF}=window.jspdf;const pdfDoc=new jsPDF();const f=getFiltered();if(!f.length){alert('No hay tareas para exportar.');return;}pdfDoc.text("Reporte de Tareas",14,16);pdfDoc.autoTable({startY:22,head:[['Descripción','Responsable','Vence','Progreso']],body:f.map(t=>[t.description,t.responsible||'N/A',formatDateDisplay(t.dueDate),t.progress+'%']),theme:'striped',headStyles:{fillColor:[41,128,185]}});pdfDoc.save(`reporte-${new Date().toISOString().split('T')[0]}.pdf`);};
 
+    // ── Arrastrar tareas del listado por etiqueta al cronograma del día ───────
+    // Al soltar: plannedDate = hoy, startTime = hora donde se suelta (bloques de 15 min),
+    // endTime = inicio + duración (la que ya tenía la tarea, o 1 hora por defecto).
+    const DND_DEFAULT_HOURS=1;
+    let dndTaskId=null;
+    const dndToHHMM=h=>{let H=Math.floor(h),M=Math.round((h-H)*60);if(M===60){H++;M=0;}return`${String(H).padStart(2,'0')}:${String(M).padStart(2,'0')}`;};
+    const dndSlot=(zone,clientY,task)=>{
+        const sh=+zone.dataset.sh,eh=+zone.dataset.eh,hh=+zone.dataset.hh;
+        const y=clientY-zone.getBoundingClientRect().top;
+        let dur=(task.startTime&&task.endTime)?parseTime(task.endTime)-parseTime(task.startTime):DND_DEFAULT_HOURS;
+        if(!(dur>0))dur=DND_DEFAULT_HOURS;
+        const maxEnd=Math.min(eh+1,23.75);
+        let start=sh+Math.round((y/hh)*4)/4;
+        start=Math.max(sh,Math.min(start,maxEnd-dur));
+        const end=Math.min(start+dur,maxEnd);
+        return{start,end,sh,hh};
+    };
+    const dndClearPreview=()=>{
+        document.getElementById('planner-drop-preview')?.remove();
+        document.querySelectorAll('.planner-drop-zone.drop-active').forEach(z=>z.classList.remove('drop-active'));
+    };
+    document.getElementById('tag-groups-container').addEventListener('dragstart',e=>{
+        const card=e.target.closest('.task-card[draggable="true"]');
+        if(!card)return;
+        dndTaskId=card.dataset.id;
+        e.dataTransfer.effectAllowed='move';
+        e.dataTransfer.setData('text/plain',dndTaskId);
+        document.getElementById('subtask-global-tip')?.classList.add('hidden'); // ocultar tooltip de subtareas
+        requestAnimationFrame(()=>card.classList.add('dragging'));
+    });
+    document.getElementById('tag-groups-container').addEventListener('dragend',()=>{
+        dndTaskId=null;
+        dndClearPreview();
+        document.querySelectorAll('.task-card.dragging').forEach(c=>c.classList.remove('dragging'));
+    });
+    // Autoscroll al acercarse al borde superior/inferior de la ventana mientras se arrastra
+    document.addEventListener('dragover',e=>{
+        if(!dndTaskId)return;
+        const edge=90,step=22;
+        if(e.clientY<edge)window.scrollBy(0,-step);
+        else if(window.innerHeight-e.clientY<edge)window.scrollBy(0,step);
+    });
+    dom.plannerSection.addEventListener('dragover',e=>{
+        const zone=e.target.closest('.planner-drop-zone');
+        if(!zone||!dndTaskId)return;
+        const task=tasks.find(t=>t.id===dndTaskId);
+        if(!task)return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect='move';
+        zone.classList.add('drop-active');
+        const{start,end,sh,hh}=dndSlot(zone,e.clientY,task);
+        let pv=document.getElementById('planner-drop-preview');
+        if(!pv){pv=document.createElement('div');pv.id='planner-drop-preview';zone.appendChild(pv);}
+        pv.style.top=((start-sh)*hh)+'px';
+        pv.style.height=Math.max(20,(end-start)*hh-2)+'px';
+        pv.textContent=`${dndToHHMM(start)} – ${dndToHHMM(end)} · ${task.description}`;
+    });
+    dom.plannerSection.addEventListener('dragleave',e=>{
+        const zone=e.target.closest('.planner-drop-zone');
+        if(zone&&!zone.contains(e.relatedTarget))dndClearPreview();
+    });
+    dom.plannerSection.addEventListener('drop',e=>{
+        const zone=e.target.closest('.planner-drop-zone');
+        if(!zone||!dndTaskId)return;
+        e.preventDefault();
+        const task=tasks.find(t=>t.id===dndTaskId);
+        dndClearPreview();
+        if(!task){dndTaskId=null;return;}
+        const{start,end}=dndSlot(zone,e.clientY,task);
+        const d=new Date();d.setHours(0,0,0,0);
+        task.plannedDate=d.toISOString().split('T')[0]; // misma convención que usa el cronograma
+        task.startTime=dndToHHMM(start);
+        task.endTime=dndToHHMM(end);
+        dndTaskId=null;
+        saveData();
+        renderAll();
+    });
+
     // ── Listeners ─────────────────────────────────────────────────────────────
     dom.showDashboardBtn.addEventListener('click',()=>switchView('dashboard'));
     dom.showAllTasksBtn.addEventListener('click',()=>switchView('tasks'));
@@ -1786,7 +1869,26 @@ document.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('openModalMeetingDash').addEventListener('click',()=>openEditMeetingModal({}));
     dom.closeMeetingModalBtn.addEventListener('click',closeMeetingModal);
     dom.meetingForm.addEventListener('submit',saveMeeting);
-    dom.deleteMeetingBtn.addEventListener('click',()=>{meetings=meetings.filter(m=>m.id!==dom.meetingForm.meetingId.value);saveData();renderAll();closeMeetingModal();});
+    // Eliminar reunión (con confirmación). Devuelve true si se eliminó.
+    const deleteMeeting=id=>{
+        const m=meetings.find(x=>x.id===id);
+        if(!m||m.fromGcal)return false;
+        if(!confirm(`¿Eliminar la reunión "${m.title}" del ${formatDateDisplay(m.date)}?\n\nEsta acción no se puede deshacer.`))return false;
+        meetings=meetings.filter(x=>x.id!==id);
+        saveData();renderAll();
+        return true;
+    };
+    dom.deleteMeetingBtn.addEventListener('click',()=>{if(deleteMeeting(dom.meetingForm.meetingId.value))closeMeetingModal();});
+    // Botón 🗑 en las listas de "Todas las Reuniones" (pendientes y realizadas)
+    [dom.allMeetingsList,dom.completedMeetingsList].forEach(list=>list.addEventListener('click',e=>{
+        const b=e.target.closest('.delete-meeting-btn');if(b)deleteMeeting(b.dataset.id);
+    }));
+    // Abrir la ficha de una reunión desde el monitor del Panel Principal
+    dom.meetingsList.addEventListener('click',e=>{
+        if(e.target.closest('input'))return;
+        const mc=e.target.closest('.meeting-card');if(!mc)return;
+        const m=meetings.find(x=>x.id===mc.dataset.id);if(m)openEditMeetingModal(m);
+    });
     dom.meetingsList.addEventListener('change',e=>{if(e.target.classList.contains('complete-meeting-cb-monitor')){const m=meetings.find(m=>m.id===e.target.dataset.id);if(m){m.completed=e.target.checked;saveData();renderMeetingMonitor();renderAllMeetingsList();renderCombinedPlanner();}}});
     dom.allMeetingsList.addEventListener('change',e=>{if(e.target.classList.contains('complete-meeting-cb')){const m=meetings.find(m=>m.id===e.target.dataset.id);if(m){m.completed=e.target.checked;saveData();renderAllMeetingsList();renderCombinedPlanner();}}});
     dom.searchCompletedMeetings.addEventListener('input',e=>{filters.completedMeetingSearch=e.target.value;renderAllMeetingsList();});
@@ -1848,6 +1950,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     filterMtgDP.config.onChange.push(()=>renderAllMeetingsList());
     dom.plannerSection.addEventListener('click',e=>{
         const ts=e.target.closest('.time-slot');if(ts)openEditTaskModal({},ts.dataset.time);
+        // Tarjetas de tareas agendadas en el cronograma (son .absolute, por lo que el manejador global las ignora)
+        const tc=e.target.closest('.task-card.absolute');if(tc&&!e.target.closest('.progress-slider')){const t=tasks.find(t=>t.id===tc.dataset.id);if(t)openEditTaskModal(t);}
+        const mc=e.target.closest('.meeting-card');if(mc){const m=meetings.find(x=>x.id===mc.dataset.id);if(m)openEditMeetingModal(m);}
         const ut=e.target.closest('.unscheduled-task');if(ut)openScheduleModal(ut.dataset.id);
         const cb=e.target.closest('.repetitive-cb');if(cb){const t=tasks.find(t=>t.id===cb.dataset.id);if(t){if(!t.completedDates)t.completedDates=[];const idx=t.completedDates.indexOf(cb.dataset.date);if(cb.checked){if(idx===-1)t.completedDates.push(cb.dataset.date);}else if(idx!==-1)t.completedDates.splice(idx,1);saveData();renderAll();}}
         const er=e.target.closest('.edit-repetitive-btn');if(er){const t=tasks.find(t=>t.id===er.dataset.id);if(t)openEditTaskModal(t);}
