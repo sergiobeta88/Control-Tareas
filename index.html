@@ -562,6 +562,8 @@
             <button id="start-pause-timer-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-[10px] transition">▶ INICIAR</button>
             <button id="reset-timer-btn"       class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1.5 px-2 rounded-lg text-[10px] transition">↺</button>
         </div>
+        <!-- Modo recurrente -->
+        <button id="timer-recurrent-btn" type="button" class="w-full mb-2 py-1 rounded-lg text-[9px] font-bold border border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 transition" title="Si está activo, la alerta de fin solo se cierra al definir otro temporizador">🔁 Recurrente: OFF</button>
     </div>
     <!-- ids de compatibilidad ocultos -->
     <div class="hidden">
@@ -588,11 +590,28 @@
         <!-- Franja de alerta animada -->
         <div id="timer-done-stripe" class="h-2 w-full" style="background:repeating-linear-gradient(45deg,#dc2626 0,#dc2626 10px,#fca5a5 10px,#fca5a5 20px);background-size:200% 100%;animation:stripeScroll 1s linear infinite"></div>
         <!-- Cuerpo -->
-        <div class="px-6 py-5">
+        <div id="timer-done-normal" class="px-6 py-5">
             <p class="text-gray-600 text-sm mb-5">El tiempo definido ha llegado a cero.<br>Puedes iniciar un nuevo ciclo cuando estés listo.</p>
             <button id="timer-done-ok" class="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-black py-3 rounded-xl text-base tracking-wide transition shadow-md">
                 ✓ Aceptar
             </button>
+        </div>
+        <!-- Modo recurrente: la alerta solo se cierra definiendo otro temporizador -->
+        <div id="timer-done-recurrent" class="hidden px-5 py-4">
+            <p class="text-red-700 text-xs font-bold uppercase tracking-wider mb-1">🔁 Modo recurrente</p>
+            <p class="text-gray-600 text-sm mb-3">Define otro temporizador para cerrar esta alerta.</p>
+            <button id="timer-rec-repeat" type="button" class="w-full mb-2 bg-red-600 hover:bg-red-700 text-white font-black py-2.5 rounded-xl text-sm transition shadow-md">↻ Repetir 25:00</button>
+            <div class="grid grid-cols-4 gap-1 mb-2">
+                <button type="button" class="timer-rec-preset py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition" data-secs="300">5'</button>
+                <button type="button" class="timer-rec-preset py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition" data-secs="600">10'</button>
+                <button type="button" class="timer-rec-preset py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition" data-secs="900">15'</button>
+                <button type="button" class="timer-rec-preset py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold transition" data-secs="1500">25'</button>
+            </div>
+            <div class="flex gap-1">
+                <input id="timer-rec-input" type="text" maxlength="5" placeholder="mm:ss" class="flex-grow min-w-0 text-center text-sm border border-gray-300 rounded-lg py-2 px-2 focus:outline-none focus:border-red-400">
+                <button id="timer-rec-set" type="button" class="bg-gray-800 hover:bg-gray-900 text-white font-bold px-3 rounded-lg text-xs transition">▶ INICIAR</button>
+            </div>
+            <p id="timer-rec-error" class="hidden text-[11px] text-red-600 mt-1">Ingresa un tiempo válido (mm:ss, máx. 60 min).</p>
         </div>
     </div>
 </div>
@@ -1426,6 +1445,9 @@ document.addEventListener('DOMContentLoaded',()=>{
         box.classList.remove('ringing');
         box.style.animation = 'none';
 
+        // Ajustar el contenido del modal según el modo (normal / recurrente)
+        applyDoneModalMode();
+
         // Mostrar overlay
         overlay.classList.remove('hidden');
 
@@ -1453,7 +1475,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             setTimeout(() => navigator.vibrate([300, 100, 300, 100, 500]), 2200);
         }
     };
-    document.getElementById('timer-done-ok').addEventListener('click',()=>{
+    const closeTimerDone=()=>{
         const overlay = document.getElementById('timer-done-overlay');
         const box     = document.getElementById('timer-done-box');
         overlay.classList.add('hidden');
@@ -1461,7 +1483,61 @@ document.addEventListener('DOMContentLoaded',()=>{
         box.classList.remove('ringing');
         if (navigator.vibrate) navigator.vibrate(0); // detener vibración
         document.title = 'Panel de Productividad';
+    };
+    document.getElementById('timer-done-ok').addEventListener('click',closeTimerDone);
+
+    // ── Modo recurrente ───────────────────────────────────────────────────────
+    // OFF: la alerta se cierra con "Aceptar" (comportamiento original).
+    // ON : la alerta solo se cierra al definir otro temporizador (repetir, preset o manual),
+    //      que además se inicia automáticamente.
+    let timerRecurrent=localStorage.getItem('timer_recurrent')==='1';
+    const fmtTimer=s=>`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    const renderRecurrentBtn=()=>{
+        const b=document.getElementById('timer-recurrent-btn');
+        b.textContent=timerRecurrent?'🔁 Recurrente: ON':'🔁 Recurrente: OFF';
+        b.className='w-full mb-2 py-1 rounded-lg text-[9px] font-bold border transition '+(timerRecurrent
+            ?'bg-red-50 border-red-300 text-red-700 hover:bg-red-100'
+            :'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100');
+    };
+    document.getElementById('timer-recurrent-btn').addEventListener('click',()=>{
+        timerRecurrent=!timerRecurrent;
+        localStorage.setItem('timer_recurrent',timerRecurrent?'1':'0');
+        renderRecurrentBtn();
     });
+    renderRecurrentBtn();
+    // Aplica el modo vigente al modal de fin (se llama al mostrarlo)
+    const applyDoneModalMode=()=>{
+        document.getElementById('timer-done-normal').classList.toggle('hidden',timerRecurrent);
+        document.getElementById('timer-done-recurrent').classList.toggle('hidden',!timerRecurrent);
+        if(timerRecurrent){
+            document.getElementById('timer-rec-repeat').textContent=`↻ Repetir ${fmtTimer(timerTotalSeconds)}`;
+            document.getElementById('timer-rec-input').value='';
+            document.getElementById('timer-rec-error').classList.add('hidden');
+        }
+    };
+    // Define el nuevo temporizador, lo inicia y cierra la alerta
+    const startNextTimer=secs=>{
+        closeTimerDone();
+        setTimerSeconds(secs);
+        startPauseTimer();
+    };
+    const parseTimerInput=raw=>{
+        raw=raw.trim();if(!raw)return 0;
+        const parts=raw.split(':');
+        let secs=0;
+        if(parts.length===2)secs=parseInt(parts[0]||0,10)*60+parseInt(parts[1]||0,10);
+        else if(parts.length===1)secs=parseInt(raw,10)*60;
+        return(secs>0&&secs<=3600)?secs:0;
+    };
+    document.getElementById('timer-rec-repeat').addEventListener('click',()=>startNextTimer(timerTotalSeconds));
+    document.querySelectorAll('.timer-rec-preset').forEach(b=>b.addEventListener('click',()=>startNextTimer(parseInt(b.dataset.secs,10))));
+    const recManualSet=()=>{
+        const secs=parseTimerInput(document.getElementById('timer-rec-input').value);
+        if(!secs){document.getElementById('timer-rec-error').classList.remove('hidden');return;}
+        startNextTimer(secs);
+    };
+    document.getElementById('timer-rec-set').addEventListener('click',recManualSet);
+    document.getElementById('timer-rec-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();recManualSet();}});
     const startPauseTimer=()=>{
         isTimerRunning=!isTimerRunning;
         dom.startPauseTimerBtn.innerHTML=isTimerRunning?'⏸ PAUSAR':'▶ INICIAR';
