@@ -66,6 +66,46 @@
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
         /* ── Subtask tooltip global ───────────────────────── */
         #subtask-global-tip { pointer-events:none; transition:opacity .15s; }
+        /* ── Alerta modal de reuniones ────────────────────── */
+        #meeting-alert-overlay {
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+            transition: opacity .25s;
+        }
+        #meeting-alert-box {
+            animation: alertPop .3s cubic-bezier(.34,1.56,.64,1) both;
+        }
+        @keyframes alertPop {
+            from { transform: scale(.7) translateY(20px); opacity: 0; }
+            to   { transform: scale(1) translateY(0);     opacity: 1; }
+        }
+        #meeting-alert-box .alert-pulse {
+            animation: alertRing 1s ease-in-out infinite;
+        }
+        @keyframes alertRing {
+            0%,100% { transform: scale(1);   }
+            50%      { transform: scale(1.08); }
+        }
+        /* ── Modal fin de temporizador ───────────────────── */
+        @keyframes timerShake {
+            0%,100% { transform: translate(0,0) rotate(0deg); }
+            10%     { transform: translate(-8px, 2px) rotate(-2deg); }
+            20%     { transform: translate( 8px,-2px) rotate( 2deg); }
+            30%     { transform: translate(-8px, 2px) rotate(-1deg); }
+            40%     { transform: translate( 8px,-2px) rotate( 1deg); }
+            50%     { transform: translate(-6px, 1px) rotate(-1deg); }
+            60%     { transform: translate( 6px,-1px) rotate( 1deg); }
+            70%     { transform: translate(-4px, 1px) rotate(0deg); }
+            80%     { transform: translate( 4px,-1px) rotate(0deg); }
+            90%     { transform: translate(-2px, 0px) rotate(0deg); }
+        }
+        @keyframes timerPulse {
+            0%,100% { opacity:1; transform:scale(1); }
+            50%      { opacity:.85; transform:scale(1.04); }
+        }
+        #timer-done-overlay { backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); transition:opacity .3s; }
+        #timer-done-box { animation: timerShake .8s ease-in-out 3, alertPop .3s cubic-bezier(.34,1.56,.64,1) both; }
+        #timer-done-box .done-time { animation: timerPulse 1.2s ease-in-out infinite; }
         /* ── Google Calendar ──────────────────────────────── */
         #gcal-status.gcal-connected { background-color:#d1fae5;color:#065f46;border-color:#6ee7b7; }
         #gcal-status.gcal-disconnected { background-color:#f3f4f6;color:#374151;border-color:#d1d5db; }
@@ -266,6 +306,40 @@
     </div>
 </div>
 
+<!-- ══ ALERTA MODAL DE REUNIONES ══ -->
+<div id="meeting-alert-overlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-[10000] flex items-center justify-center">
+    <div id="meeting-alert-box" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <!-- Cabecera dinámica (roja=reunión, azul=tarea) -->
+        <div id="meeting-alert-header" class="bg-red-600 px-6 py-5 flex flex-col items-center gap-3">
+            <div class="alert-pulse bg-white bg-opacity-20 rounded-full p-4">
+                <!-- Ícono reunión -->
+                <svg id="alert-icon-meeting" xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                </svg>
+                <!-- Ícono tarea -->
+                <svg id="alert-icon-task" xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+            <p id="meeting-alert-timing" class="text-white text-sm font-bold tracking-widest uppercase opacity-90"></p>
+        </div>
+        <!-- Cuerpo -->
+        <div class="px-6 py-6 text-center">
+            <p id="meeting-alert-title" class="text-gray-900 text-xl font-bold leading-snug mb-2"></p>
+            <p id="meeting-alert-time"  class="text-red-600 text-lg font-semibold mb-1"></p>
+            <p id="meeting-alert-date"  class="text-gray-500 text-sm"></p>
+        </div>
+        <!-- Cola de alertas pendientes -->
+        <div id="meeting-alert-queue-info" class="hidden mx-6 mb-4 py-2 px-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-semibold text-center"></div>
+        <!-- Botón -->
+        <div class="px-6 pb-6">
+            <button id="meeting-alert-ok" class="w-full text-white font-bold py-3 rounded-xl text-base transition">
+                Entendido
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ TOOLTIP GLOBAL DE SUBTAREAS ══ -->
 <div id="subtask-global-tip" class="fixed hidden z-[9999] w-72 bg-white border border-gray-200 rounded-xl shadow-2xl p-3 text-[11px]"></div>
 
@@ -399,17 +473,62 @@
     <p id="notification-message"></p>
 </div>
 
-<div id="floating-timer-container" class="fixed bottom-5 right-5 bg-white p-2.5 rounded-lg shadow-xl w-40 z-40">
-    <h4 class="font-bold text-gray-800 text-[10px] uppercase tracking-wider mb-1">Pomodoro</h4>
-    <div class="flex justify-center gap-0.5 mb-2">
-        <button id="pomodoro-mode-btn"    class="timer-btn active font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">Pom</button>
-        <button id="short-break-mode-btn" class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">S</button>
-        <button id="long-break-mode-btn"  class="timer-btn font-semibold py-0.5 px-1 rounded text-[8px] bg-gray-200 text-gray-700">L</button>
+<div id="floating-timer-container" class="fixed bottom-5 right-5 bg-white rounded-xl shadow-2xl w-44 z-40 overflow-hidden select-none">
+    <!-- Cabecera -->
+    <div class="bg-gray-800 px-3 py-2 flex items-center justify-between">
+        <h4 class="font-bold text-white text-[11px] uppercase tracking-widest">⏱ Temporizador</h4>
+        <button id="timer-minimize-btn" class="text-gray-400 hover:text-white text-xs leading-none" title="Minimizar">—</button>
     </div>
-    <div id="timer-display" class="text-2xl font-bold text-center my-1 text-gray-800 tabular-nums">25:00</div>
-    <div class="flex flex-col gap-1">
-        <button id="start-pause-timer-btn" class="bg-blue-600 text-white font-bold py-1 px-2 rounded text-[9px]">INICIAR</button>
-        <button id="reset-timer-btn"       class="bg-gray-500 text-white font-bold py-1 px-2 rounded text-[9px]">REINICIAR</button>
+    <!-- Presets de tiempo -->
+    <div class="flex border-b border-gray-100">
+        <button id="preset-5-btn"  class="timer-btn flex-1 py-1 text-[9px] font-bold text-gray-500 hover:bg-gray-100 transition">5'</button>
+        <button id="preset-10-btn" class="timer-btn flex-1 py-1 text-[9px] font-bold text-gray-500 hover:bg-gray-100 transition border-x border-gray-100">10'</button>
+        <button id="preset-15-btn" class="timer-btn flex-1 py-1 text-[9px] font-bold text-gray-500 hover:bg-gray-100 transition border-r border-gray-100">15'</button>
+        <button id="preset-25-btn" class="timer-btn active flex-1 py-1 text-[9px] font-bold transition">25'</button>
+    </div>
+    <!-- Display + entrada manual -->
+    <div class="px-3 pt-3 pb-1">
+        <div id="timer-display" class="text-3xl font-black text-center text-gray-800 tabular-nums tracking-tight leading-none mb-1">25:00</div>
+        <!-- Entrada manual min:seg -->
+        <div id="timer-manual-row" class="flex items-center justify-center gap-1 mb-2">
+            <input id="timer-manual-input" type="text" maxlength="5" placeholder="mm:ss"
+                class="w-16 text-center text-xs border border-gray-200 rounded-md py-0.5 px-1 focus:outline-none focus:border-blue-400 text-gray-600">
+            <button id="timer-set-btn" class="text-[9px] font-bold bg-gray-100 hover:bg-gray-200 px-1.5 py-1 rounded-md text-gray-600 transition">SET</button>
+        </div>
+        <!-- Barra de progreso -->
+        <div class="w-full bg-gray-100 rounded-full h-1 mb-2">
+            <div id="timer-progress-bar" class="bg-blue-500 h-1 rounded-full transition-all duration-1000" style="width:100%"></div>
+        </div>
+        <!-- Botones -->
+        <div class="flex gap-1 mb-2">
+            <button id="start-pause-timer-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-[10px] transition">▶ INICIAR</button>
+            <button id="reset-timer-btn"       class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1.5 px-2 rounded-lg text-[10px] transition">↺</button>
+        </div>
+    </div>
+    <!-- ids de compatibilidad ocultos -->
+    <div class="hidden">
+        <button id="pomodoro-mode-btn"></button>
+        <button id="short-break-mode-btn"></button>
+        <button id="long-break-mode-btn"></button>
+    </div>
+</div>
+<!-- Estado minimizado -->
+<div id="timer-mini" class="hidden fixed bottom-5 right-5 bg-gray-800 text-white rounded-xl shadow-2xl px-3 py-2 z-40 cursor-pointer flex items-center gap-2 select-none" title="Expandir temporizador">
+    <span class="text-sm">⏱</span>
+    <span id="timer-mini-display" class="text-sm font-black tabular-nums">25:00</span>
+</div>
+
+<!-- Modal vibración al finalizar -->
+<div id="timer-done-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-[10001] flex items-center justify-center">
+    <div id="timer-done-box" class="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden text-center">
+        <div class="bg-gray-800 px-6 py-6">
+            <div class="done-time text-6xl font-black text-white tabular-nums mb-1">00:00</div>
+            <p class="text-gray-300 text-sm font-semibold tracking-widest uppercase">¡Tiempo!</p>
+        </div>
+        <div class="px-6 py-6">
+            <p class="text-gray-700 text-base font-semibold mb-5">El temporizador ha llegado a cero.</p>
+            <button id="timer-done-ok" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl text-base transition">Aceptar</button>
+        </div>
     </div>
 </div>
 
@@ -487,6 +606,8 @@ document.addEventListener('DOMContentLoaded',()=>{
         timerDisplay:$('timer-display'), startPauseTimerBtn:$('start-pause-timer-btn'),
         resetTimerBtn:$('reset-timer-btn'), pomodoroModeBtn:$('pomodoro-mode-btn'),
         shortBreakModeBtn:$('short-break-mode-btn'), longBreakModeBtn:$('long-break-mode-btn'),
+        timerProgressBar:$('timer-progress-bar'), timerMiniDisplay:$('timer-mini-display'),
+        timerMini:$('timer-mini'), timerMinimizeBtn:$('timer-minimize-btn'),
         viewLaboralBtn:$('view-laboral-btn'), viewPersonalBtn:$('view-personal-btn'),
         progressContainerModal:$('progress-container-modal'), progressLabel:$('progress-label'),
         filterMeetingDate:$('filter-meeting-date'), manageTagsBtn:$('manage-tags-btn'),
@@ -501,9 +622,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     let firedAlerts=new Set(),currentView='laboral',fbUnsubscribe=null;
     let histCalYear=new Date().getFullYear(),histCalMonth=new Date().getMonth(),histSelectedDate=null;
 
-    // ── Timer ────────────────────────────────────────────────────────────────
-    const TIMER_MODES={pomodoro:25*60,shortBreak:5*60,longBreak:15*60};
-    let timerMode='pomodoro',timeRemaining=TIMER_MODES.pomodoro,isTimerRunning=false,timerIntervalId=null,timerEndTime=0;
+    // ── Temporizador ─────────────────────────────────────────────────────────
+    const TIMER_PRESETS={'preset-5':5*60,'preset-10':10*60,'preset-15':15*60,'preset-25':25*60};
+    let timerMode='pomodoro'; // mantener por compatibilidad
+    let timerTotalSeconds=25*60, timeRemaining=25*60, isTimerRunning=false, timerIntervalId=null, timerEndTime=0;
 
     // ── Flatpickr ────────────────────────────────────────────────────────────
     const fpL={firstDayOfWeek:1,weekdays:{shorthand:["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"],longhand:["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"]},months:{shorthand:["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"],longhand:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]}};
@@ -1088,12 +1210,195 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // ── Notificaciones / Timer ────────────────────────────────────────────────
     const playBeep=()=>{try{const ctx=new(window.AudioContext||window.webkitAudioContext)(),now=ctx.currentTime;[0,.2,.4].forEach((t,i)=>{const o=ctx.createOscillator();o.type='sine';o.frequency.value=i===2?1000:880;o.connect(ctx.destination);o.start(now+t);o.stop(now+t+.1);});}catch(e){}};
+    // ── Sistema de alertas ─────────────────────────────────────────────────────
+    // Toast pequeño: para alertas de tareas
     const showNotification=msg=>{dom.notificationMessage.textContent=msg;dom.notificationToast.classList.remove('opacity-0','translate-y-10');playBeep();setTimeout(()=>dom.notificationToast.classList.add('opacity-0','translate-y-10'),5000);};
-    const checkAllAlerts=()=>{const now=new Date(),ts=now.toISOString().split('T')[0];const chk=(item,type)=>{if(!item.startTime)return;const[h,m]=item.startTime.split(':').map(Number),t=new Date();t.setHours(h,m,0,0);const diff=Math.round((t-now)/60000);const title=type==='meeting'?item.title:item.description;if(diff===15&&!firedAlerts.has(`${type}-${item.id}-15`)){showNotification(`AVISO (15 min): ${title}`);firedAlerts.add(`${type}-${item.id}-15`);}if(diff===0&&!firedAlerts.has(`${type}-${item.id}-0`)){showNotification(`¡AHORA!: ${title}`);firedAlerts.add(`${type}-${item.id}-0`);}};meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting'));tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>chk(t,'task'));};
-    const updateTimerDisplay=()=>{dom.timerDisplay.textContent=`${Math.floor(timeRemaining/60).toString().padStart(2,'0')}:${(timeRemaining%60).toString().padStart(2,'0')}`;};
-    const switchTimerMode=mode=>{timerMode=mode;resetTimer();document.querySelectorAll('.timer-btn').forEach(b=>b.classList.remove('active'));dom[mode+'ModeBtn'].classList.add('active');};
-    const startPauseTimer=()=>{isTimerRunning=!isTimerRunning;dom.startPauseTimerBtn.textContent=isTimerRunning?'PAUSAR':'INICIAR';if(isTimerRunning){timerEndTime=Date.now()+timeRemaining*1000;timerIntervalId=setInterval(()=>{timeRemaining=Math.max(0,Math.round((timerEndTime-Date.now())/1000));updateTimerDisplay();if(timeRemaining<=0){clearInterval(timerIntervalId);isTimerRunning=false;dom.startPauseTimerBtn.textContent='INICIAR';playBeep();showNotification('¡Tiempo terminado!');}},1000);}else clearInterval(timerIntervalId);};
-    const resetTimer=()=>{clearInterval(timerIntervalId);isTimerRunning=false;timeRemaining=TIMER_MODES[timerMode];dom.startPauseTimerBtn.textContent='INICIAR';updateTimerDisplay();};
+
+    // Modal bloqueante: reuniones (rojo) y tareas (azul)
+    const alertQueue=[];
+    let alertOpen=false;
+
+    const showAlert=(item, timing, type)=>{
+        // type: 'meeting' | 'task'
+        alertQueue.push({item, timing, type});
+        if(!alertOpen) pumpAlert();
+    };
+
+    const pumpAlert=()=>{
+        if(!alertQueue.length){ alertOpen=false; return; }
+        alertOpen=true;
+        const {item, timing, type}=alertQueue[0];
+        const isMeeting = type==='meeting';
+        const DAYS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
+        // Color de cabecera y botón según tipo
+        const header=document.getElementById('meeting-alert-header');
+        const btn=document.getElementById('meeting-alert-ok');
+        if(isMeeting){
+            header.className='bg-red-600 px-6 py-5 flex flex-col items-center gap-3';
+            btn.className='w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold py-3 rounded-xl text-base transition';
+        } else {
+            header.className='bg-blue-600 px-6 py-5 flex flex-col items-center gap-3';
+            btn.className='w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl text-base transition';
+        }
+
+        // Ícono según tipo
+        document.getElementById('alert-icon-meeting').classList.toggle('hidden', !isMeeting);
+        document.getElementById('alert-icon-task').classList.toggle('hidden', isMeeting);
+
+        // Etiqueta de tiempo
+        document.getElementById('meeting-alert-timing').textContent=
+            timing===0 ? '¡Ahora!' : `En ${timing} minutos`;
+
+        // Título
+        document.getElementById('meeting-alert-title').textContent=
+            isMeeting ? item.title : item.description;
+
+        // Hora
+        const timeStr = item.startTime + (item.endTime ? ' – '+item.endTime : '');
+        document.getElementById('meeting-alert-time').textContent = '🕐 '+timeStr;
+
+        // Fecha / vencimiento
+        const dateField = isMeeting ? item.date : (item.plannedDate || item.dueDate);
+        if(dateField){
+            const d=new Date(dateField+'T00:00:00');
+            document.getElementById('meeting-alert-date').textContent=
+                DAYS[d.getDay()]+', '+d.toLocaleDateString('es-CO',{day:'numeric',month:'long'});
+        } else {
+            document.getElementById('meeting-alert-date').textContent='';
+        }
+
+        // Cola pendiente
+        const queueInfo=document.getElementById('meeting-alert-queue-info');
+        if(alertQueue.length>1){
+            queueInfo.textContent=`+${alertQueue.length-1} aviso${alertQueue.length-1!==1?'s':''} pendiente${alertQueue.length-1!==1?'s':''}`;
+            queueInfo.classList.remove('hidden');
+        } else {
+            queueInfo.classList.add('hidden');
+        }
+
+        // Mostrar
+        document.getElementById('meeting-alert-overlay').classList.remove('hidden');
+        playBeep();
+    };
+
+    // Botón Entendido
+    document.getElementById('meeting-alert-ok').addEventListener('click',()=>{
+        alertQueue.shift();
+        document.getElementById('meeting-alert-overlay').classList.add('hidden');
+        alertOpen=false;
+        if(alertQueue.length) setTimeout(pumpAlert, 350);
+    });
+
+    const checkAllAlerts=()=>{
+        const now=new Date(), ts=now.toISOString().split('T')[0];
+        const chk=(item,type)=>{
+            if(!item.startTime)return;
+            const[h,m]=item.startTime.split(':').map(Number),t=new Date();
+            t.setHours(h,m,0,0);
+            const diff=Math.round((t-now)/60000);
+            if(diff===15&&!firedAlerts.has(`${type}-${item.id}-15`)){
+                firedAlerts.add(`${type}-${item.id}-15`);
+                showAlert(item,15,type);
+            }
+            if(diff===0&&!firedAlerts.has(`${type}-${item.id}-0`)){
+                firedAlerts.add(`${type}-${item.id}-0`);
+                showAlert(item,0,type);
+            }
+        };
+        meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting'));
+        tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>chk(t,'task'));
+    };
+    const updateTimerDisplay=()=>{
+        const mm=Math.floor(timeRemaining/60).toString().padStart(2,'0');
+        const ss=(timeRemaining%60).toString().padStart(2,'0');
+        const txt=`${mm}:${ss}`;
+        dom.timerDisplay.textContent=txt;
+        if(dom.timerMiniDisplay) dom.timerMiniDisplay.textContent=txt;
+        // Barra de progreso
+        const pct=timerTotalSeconds>0?Math.round((timeRemaining/timerTotalSeconds)*100):0;
+        if(dom.timerProgressBar){
+            dom.timerProgressBar.style.width=pct+'%';
+            dom.timerProgressBar.className='h-1 rounded-full transition-all duration-1000 '+(
+                pct>50?'bg-blue-500':pct>20?'bg-yellow-400':'bg-red-500');
+        }
+        // Título de la pestaña del navegador mientras corre
+        if(isTimerRunning) document.title=`⏱ ${txt} — Panel de Productividad`;
+        else document.title='Panel de Productividad';
+    };
+    const switchTimerMode=mode=>{timerMode=mode;};// compatibilidad
+    const setTimerSeconds=(secs)=>{
+        clearInterval(timerIntervalId);isTimerRunning=false;
+        timerTotalSeconds=secs;timeRemaining=secs;
+        dom.startPauseTimerBtn.innerHTML='▶ INICIAR';
+        updateTimerDisplay();
+        // Marcar preset activo
+        document.querySelectorAll('.timer-btn').forEach(b=>b.classList.remove('active'));
+        const presetMap={'preset-5':5*60,'preset-10':10*60,'preset-15':15*60,'preset-25':25*60};
+        const match=Object.keys(presetMap).find(k=>presetMap[k]===secs);
+        if(match){const el=document.getElementById(match+'-btn');if(el)el.classList.add('active');}
+    };
+    const showTimerDone=()=>{
+        playBeep();playBeep();
+        const overlay=document.getElementById('timer-done-overlay');
+        // Resetear animación para que sacuda aunque se abra varias veces
+        const box=document.getElementById('timer-done-box');
+        box.style.animation='none';
+        requestAnimationFrame(()=>{
+            box.style.animation='';
+            overlay.classList.remove('hidden');
+        });
+    };
+    document.getElementById('timer-done-ok').addEventListener('click',()=>{
+        document.getElementById('timer-done-overlay').classList.add('hidden');
+        document.title='Panel de Productividad';
+    });
+    const startPauseTimer=()=>{
+        isTimerRunning=!isTimerRunning;
+        dom.startPauseTimerBtn.innerHTML=isTimerRunning?'⏸ PAUSAR':'▶ INICIAR';
+        if(isTimerRunning){
+            timerEndTime=Date.now()+timeRemaining*1000;
+            timerIntervalId=setInterval(()=>{
+                timeRemaining=Math.max(0,Math.round((timerEndTime-Date.now())/1000));
+                updateTimerDisplay();
+                if(timeRemaining<=0){
+                    clearInterval(timerIntervalId);
+                    isTimerRunning=false;
+                    dom.startPauseTimerBtn.innerHTML='▶ INICIAR';
+                    showTimerDone();
+                }
+            },500);
+        } else {
+            clearInterval(timerIntervalId);
+        }
+    };
+    const resetTimer=()=>{
+        clearInterval(timerIntervalId);isTimerRunning=false;
+        timeRemaining=timerTotalSeconds;
+        dom.startPauseTimerBtn.innerHTML='▶ INICIAR';
+        updateTimerDisplay();
+    };
+    // Entrada manual mm:ss
+    document.getElementById('timer-set-btn').addEventListener('click',()=>{
+        const raw=document.getElementById('timer-manual-input').value.trim();
+        const parts=raw.split(':');
+        let secs=0;
+        if(parts.length===2){secs=parseInt(parts[0]||0,10)*60+parseInt(parts[1]||0,10);}
+        else if(parts.length===1&&raw!==''){secs=parseInt(raw,10)*60;}
+        if(secs>0&&secs<=3600){setTimerSeconds(secs);document.getElementById('timer-manual-input').value='';}
+    });
+    document.getElementById('timer-manual-input').addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();document.getElementById('timer-set-btn').click();}
+    });
+    // Minimizar / restaurar
+    dom.timerMinimizeBtn.addEventListener('click',()=>{
+        document.getElementById('floating-timer-container').classList.add('hidden');
+        dom.timerMini.classList.remove('hidden');
+    });
+    dom.timerMini.addEventListener('click',()=>{
+        dom.timerMini.classList.add('hidden');
+        document.getElementById('floating-timer-container').classList.remove('hidden');
+    });
     const exportTasksToPDF=()=>{const{jsPDF}=window.jspdf;const pdfDoc=new jsPDF();const f=getFiltered();if(!f.length){alert('No hay tareas para exportar.');return;}pdfDoc.text("Reporte de Tareas",14,16);pdfDoc.autoTable({startY:22,head:[['Descripción','Responsable','Vence','Progreso']],body:f.map(t=>[t.description,t.responsible||'N/A',formatDateDisplay(t.dueDate),t.progress+'%']),theme:'striped',headStyles:{fillColor:[41,128,185]}});pdfDoc.save(`reporte-${new Date().toISOString().split('T')[0]}.pdf`);};
 
     // ── Listeners ─────────────────────────────────────────────────────────────
@@ -1303,9 +1608,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.toggleAllCompletedMeetings.addEventListener('click',()=>{filters.showAllCompletedMeetings=!filters.showAllCompletedMeetings;renderAllMeetingsList();});
     dom.scheduleForm.addEventListener('submit',saveScheduleTime);
     dom.closeScheduleModalBtn.addEventListener('click',closeScheduleModal);
-    dom.pomodoroModeBtn.addEventListener('click',()=>switchTimerMode('pomodoro'));
-    dom.shortBreakModeBtn.addEventListener('click',()=>switchTimerMode('shortBreak'));
-    dom.longBreakModeBtn.addEventListener('click',()=>switchTimerMode('longBreak'));
+    // Presets de tiempo
+    Object.keys(TIMER_PRESETS).forEach(id=>{
+        const el=document.getElementById(id+'-btn');
+        if(el) el.addEventListener('click',()=>setTimerSeconds(TIMER_PRESETS[id]));
+    });
     dom.startPauseTimerBtn.addEventListener('click',startPauseTimer);
     dom.resetTimerBtn.addEventListener('click',resetTimer);
     dom.taskForm.progress.addEventListener('input',e=>{dom.progressLabel.textContent=`${e.target.value}%`;});
