@@ -688,7 +688,16 @@ document.addEventListener('DOMContentLoaded',()=>{
         };
     };
 
-    const applyData=raw=>{const d=parseData(raw);tasks=d.tasks;meetings=d.meetings;allTags=d.allTags;allResponsibles=d.allResponsibles;tagColors=d.tagColors||{};checkDueDates();renderAll();};
+    const applyData=raw=>{
+        const d=parseData(raw);
+        tasks=d.tasks;
+        // Preservar reuniones GCal que estén en memoria — Firebase nunca las guarda
+        // así que al recibir datos frescos de Firebase hay que re-inyectarlas.
+        const gcalInMemory=meetings.filter(m=>m.fromGcal);
+        meetings=[...d.meetings.filter(m=>!m.fromGcal),...gcalInMemory];
+        allTags=d.allTags;allResponsibles=d.allResponsibles;tagColors=d.tagColors||{};
+        checkDueDates();renderAll();
+    };
 
     // ════════════════════════════════════════════════════════════════════════
     //  HISTORIAL
@@ -1825,20 +1834,22 @@ document.addEventListener('DOMContentLoaded',()=>{
         if (ind) ind.classList.add('hidden');
     };
 
-    // Carga las reuniones de GCal desde localStorage (sin red, instantáneo)
+    // Carga las reuniones de GCal desde localStorage y re-renderiza todos los paneles
     const gcalLoadCached = () => {
         try {
             const raw = localStorage.getItem('gcal_meetings');
             if (!raw) return;
             const cached = JSON.parse(raw);
             if (!Array.isArray(cached) || !cached.length) return;
-            meetings = meetings.filter(m => !m.fromGcal);
-            meetings.push(...cached);
+            // Reemplazar solo los eventos GCal — nunca tocar los manuales
+            meetings = [...meetings.filter(m => !m.fromGcal), ...cached];
             const ts = localStorage.getItem('gcal_sync_ts');
             const label = ts
                 ? `✓ GCal (${cached.length}) · ${new Date(ts).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`
                 : `✓ GCal (${cached.length})`;
             gcalSetStatus('gcal-connected', label);
+            // Re-renderizar todos los paneles para que reflejen las reuniones GCal
+            renderAll();
         } catch(e) {
             console.warn('gcalLoadCached error:', e);
         }
