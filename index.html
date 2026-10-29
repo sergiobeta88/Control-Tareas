@@ -1133,7 +1133,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 const prHtml=done?`<span class="text-xs font-bold text-green-700">✔ COMPLETADA</span>`:`<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px]">${ev.progress}%</span></div>`;
                 const sm=dur<0.75;
                 const stip=ev.subtasks?.length>0?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60]"><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:'';
-                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
+                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
                 return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
@@ -1179,7 +1179,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         let cnt=0,cd=new Date(today);
         while(cnt<3){cd.setDate(cd.getDate()+1);if(cd.getDay()!==0&&cd.getDay()!==6){cnt++;const ds=cd.toISOString().split('T')[0];const dn=cd.toLocaleDateString('es-ES',{weekday:'long'});const dt=tasks.filter(t=>t.plannedDate===ds&&!t.isDelegated&&!t.isRepetitive);const dm=meetings.filter(m=>m.date===ds).sort((a,b)=>a.startTime.localeCompare(b.startTime));const mtgHtml=dm.length>0?`<div class="mt-1 space-y-1">${dm.map(m=>`<div class="meeting-card bg-cyan-50 border border-cyan-200 p-1.5 rounded text-[10px]" data-id="${m.id}">📞 <span class="font-semibold text-cyan-800">${m.startTime?m.startTime+' – ':''}</span>${m.title}${m.fromGcal?'<span class="gcal-badge ml-1">GCal</span>':''}</div>`).join('')}</div>`:'';upHtml+=`<div><h4 class="font-bold capitalize text-gray-600 text-sm">${dn}</h4>${dt.length>0?`<div class="mt-2 space-y-2">${dt.map(t=>{const cc=t.type==='personal'?'border-orange-200':'border-blue-200';return`<div class="task-card bg-white p-2 rounded-md shadow-sm border text-[11px] ${cc}" data-id="${t.id}"><span class="font-semibold ${t.type==='personal'?'text-orange-600':'text-blue-600'}">[${t.type==='personal'?'P':'L'}]</span> ${t.description}</div>`;}).join('')}</div>`:'<p class="text-xs text-gray-400 mt-1">Sin tareas.</p>'}${mtgHtml}</div>`;}}
         upHtml+=`</div>`;
-        dom.combinedPlannerContainer.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh,true)}</div></div></div><div>${renderRepetitiveChecklist(todayStr,true)}${upHtml}</div></div>`;
+        dom.combinedPlannerContainer.innerHTML=`<div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2"><div class="flex justify-between items-center mb-6"><h3 class="text-xl font-bold capitalize">Cronograma: ${todayName}</h3><div id="planner-clock" class="text-2xl font-bold text-red-600 bg-red-50 px-4 py-1.5 rounded-lg border border-red-200">00:00:00</div></div><div class="relative planner-drop-zone" data-sh="${sh}" data-eh="${eh}" data-hh="${hh}" style="height:${(eh-sh+1)*hh}px;">${buildTimeslots(sh,eh,hh)}<div id="time-now-line" class="absolute left-14 right-0 border-t-2 border-red-500" style="display:none;"><div class="absolute -left-1 -top-1.5 w-3 h-3 bg-red-500 rounded-full"></div></div><div class="absolute top-0 bottom-0 left-14 right-0">${renderEventLayout(evs,sh,eh,hh,true)}</div></div></div><div>${renderRepetitiveChecklist(todayStr,true)}${upHtml}</div></div>`;
         updatePlannerClock();
     };
     const renderMeetingMonitor=()=>{
@@ -1595,11 +1595,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     // Al soltar: plannedDate = hoy, startTime = hora donde se suelta (bloques de 15 min),
     // endTime = inicio + duración (la que ya tenía la tarea, o 1 hora por defecto).
     const DND_DEFAULT_HOURS=1;
-    let dndTaskId=null;
+    let dndTaskId=null,dndGrabOffset=0; // dndGrabOffset: px entre el borde superior de la tarjeta y el punto donde se agarró
     const dndToHHMM=h=>{let H=Math.floor(h),M=Math.round((h-H)*60);if(M===60){H++;M=0;}return`${String(H).padStart(2,'0')}:${String(M).padStart(2,'0')}`;};
     const dndSlot=(zone,clientY,task)=>{
         const sh=+zone.dataset.sh,eh=+zone.dataset.eh,hh=+zone.dataset.hh;
-        const y=clientY-zone.getBoundingClientRect().top;
+        const y=clientY-zone.getBoundingClientRect().top-dndGrabOffset;
         let dur=(task.startTime&&task.endTime)?parseTime(task.endTime)-parseTime(task.startTime):DND_DEFAULT_HOURS;
         if(!(dur>0))dur=DND_DEFAULT_HOURS;
         const maxEnd=Math.min(eh+1,23.75);
@@ -1616,13 +1616,15 @@ document.addEventListener('DOMContentLoaded',()=>{
         const card=e.target.closest('.task-card[draggable="true"]');
         if(!card)return;
         dndTaskId=card.dataset.id;
+        dndGrabOffset=0; // desde el listado, la tarjeta cae con su borde superior bajo el cursor
         e.dataTransfer.effectAllowed='move';
         e.dataTransfer.setData('text/plain',dndTaskId);
         document.getElementById('subtask-global-tip')?.classList.add('hidden'); // ocultar tooltip de subtareas
         requestAnimationFrame(()=>card.classList.add('dragging'));
     });
-    document.getElementById('tag-groups-container').addEventListener('dragend',()=>{
-        dndTaskId=null;
+    // Al terminar cualquier arrastre (suelte donde suelte) se limpia el estado
+    document.addEventListener('dragend',()=>{
+        dndTaskId=null;dndGrabOffset=0;
         dndClearPreview();
         document.querySelectorAll('.task-card.dragging').forEach(c=>c.classList.remove('dragging'));
     });
@@ -1633,41 +1635,64 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(e.clientY<edge)window.scrollBy(0,-step);
         else if(window.innerHeight-e.clientY<edge)window.scrollBy(0,step);
     });
-    dom.plannerSection.addEventListener('dragover',e=>{
-        const zone=e.target.closest('.planner-drop-zone');
-        if(!zone||!dndTaskId)return;
-        const task=tasks.find(t=>t.id===dndTaskId);
-        if(!task)return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect='move';
-        zone.classList.add('drop-active');
-        const{start,end,sh,hh}=dndSlot(zone,e.clientY,task);
-        let pv=document.getElementById('planner-drop-preview');
-        if(!pv){pv=document.createElement('div');pv.id='planner-drop-preview';zone.appendChild(pv);}
-        pv.style.top=((start-sh)*hh)+'px';
-        pv.style.height=Math.max(20,(end-start)*hh-2)+'px';
-        pv.textContent=`${dndToHHMM(start)} – ${dndToHHMM(end)} · ${task.description}`;
-    });
-    dom.plannerSection.addEventListener('dragleave',e=>{
-        const zone=e.target.closest('.planner-drop-zone');
-        if(zone&&!zone.contains(e.relatedTarget))dndClearPreview();
-    });
-    dom.plannerSection.addEventListener('drop',e=>{
-        const zone=e.target.closest('.planner-drop-zone');
-        if(!zone||!dndTaskId)return;
-        e.preventDefault();
-        const task=tasks.find(t=>t.id===dndTaskId);
-        dndClearPreview();
-        if(!task){dndTaskId=null;return;}
-        const{start,end}=dndSlot(zone,e.clientY,task);
-        const d=new Date();d.setHours(0,0,0,0);
-        task.plannedDate=d.toISOString().split('T')[0]; // misma convención que usa el cronograma
-        task.startTime=dndToHHMM(start);
-        task.endTime=dndToHHMM(end);
-        dndTaskId=null;
-        saveData();
-        renderAll();
-    });
+    // Cronograma: recibe tareas del listado y permite mover las ya agendadas (se usa en ambos cronogramas)
+    const attachPlannerDnd=container=>{
+        // El control deslizante de avance no debe iniciar el arrastre de la tarjeta
+        container.addEventListener('mousedown',e=>{
+            const sl=e.target.closest('.progress-slider');if(!sl)return;
+            const card=sl.closest('.task-card[draggable="true"]');if(!card)return;
+            card.draggable=false;
+            document.addEventListener('mouseup',()=>{card.draggable=true;},{once:true});
+        });
+        // Arrastrar una tarjeta ya agendada
+        container.addEventListener('dragstart',e=>{
+            const card=e.target.closest('.task-card[draggable="true"]');
+            if(!card)return;
+            dndTaskId=card.dataset.id;
+            dndGrabOffset=e.clientY-card.getBoundingClientRect().top;
+            e.dataTransfer.effectAllowed='move';
+            e.dataTransfer.setData('text/plain',dndTaskId);
+            document.getElementById('subtask-global-tip')?.classList.add('hidden');
+            requestAnimationFrame(()=>card.classList.add('dragging'));
+        });
+        container.addEventListener('dragover',e=>{
+            const zone=e.target.closest('.planner-drop-zone');
+            if(!zone||!dndTaskId)return;
+            const task=tasks.find(t=>t.id===dndTaskId);
+            if(!task)return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect='move';
+            zone.classList.add('drop-active');
+            const{start,end,sh,hh}=dndSlot(zone,e.clientY,task);
+            let pv=document.getElementById('planner-drop-preview');
+            if(!pv){pv=document.createElement('div');pv.id='planner-drop-preview';zone.appendChild(pv);}
+            pv.style.top=((start-sh)*hh)+'px';
+            pv.style.height=Math.max(20,(end-start)*hh-2)+'px';
+            pv.textContent=`${dndToHHMM(start)} – ${dndToHHMM(end)} · ${task.description}`;
+        });
+        container.addEventListener('dragleave',e=>{
+            const zone=e.target.closest('.planner-drop-zone');
+            if(zone&&!zone.contains(e.relatedTarget))dndClearPreview();
+        });
+        container.addEventListener('drop',e=>{
+            const zone=e.target.closest('.planner-drop-zone');
+            if(!zone||!dndTaskId)return;
+            e.preventDefault();
+            const task=tasks.find(t=>t.id===dndTaskId);
+            dndClearPreview();
+            if(!task){dndTaskId=null;return;}
+            const{start,end}=dndSlot(zone,e.clientY,task);
+            const d=new Date();d.setHours(0,0,0,0);
+            task.plannedDate=d.toISOString().split('T')[0]; // misma convención que usa el cronograma
+            task.startTime=dndToHHMM(start);
+            task.endTime=dndToHHMM(end);
+            dndTaskId=null;dndGrabOffset=0;
+            saveData();
+            renderAll();
+        });
+    };
+    attachPlannerDnd(dom.plannerSection);
+    attachPlannerDnd(dom.combinedPlannerContainer);
 
     // ── Listeners ─────────────────────────────────────────────────────────────
     dom.showDashboardBtn.addEventListener('click',()=>switchView('dashboard'));
