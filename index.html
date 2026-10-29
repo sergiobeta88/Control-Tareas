@@ -87,25 +87,83 @@
             50%      { transform: scale(1.08); }
         }
         /* ── Modal fin de temporizador ───────────────────── */
+
+        /* Sacudida agresiva del cuadro */
         @keyframes timerShake {
-            0%,100% { transform: translate(0,0) rotate(0deg); }
-            10%     { transform: translate(-8px, 2px) rotate(-2deg); }
-            20%     { transform: translate( 8px,-2px) rotate( 2deg); }
-            30%     { transform: translate(-8px, 2px) rotate(-1deg); }
-            40%     { transform: translate( 8px,-2px) rotate( 1deg); }
-            50%     { transform: translate(-6px, 1px) rotate(-1deg); }
-            60%     { transform: translate( 6px,-1px) rotate( 1deg); }
-            70%     { transform: translate(-4px, 1px) rotate(0deg); }
-            80%     { transform: translate( 4px,-1px) rotate(0deg); }
-            90%     { transform: translate(-2px, 0px) rotate(0deg); }
+            0%,100% { transform: translate(0,0) rotate(0deg) scale(1); }
+            5%      { transform: translate(-12px, 4px) rotate(-3deg) scale(1.02); }
+            10%     { transform: translate( 14px,-5px) rotate( 3deg) scale(0.98); }
+            15%     { transform: translate(-13px, 3px) rotate(-2deg) scale(1.02); }
+            20%     { transform: translate( 14px,-4px) rotate( 2deg) scale(0.99); }
+            25%     { transform: translate(-10px, 3px) rotate(-2deg) scale(1.01); }
+            30%     { transform: translate( 12px,-3px) rotate( 2deg) scale(0.99); }
+            35%     { transform: translate( -9px, 2px) rotate(-1deg) scale(1.01); }
+            40%     { transform: translate( 10px,-2px) rotate( 1deg) scale(1); }
+            50%     { transform: translate( -6px, 1px) rotate(-1deg) scale(1); }
+            60%     { transform: translate(  6px,-1px) rotate( 1deg) scale(1); }
+            70%     { transform: translate( -3px, 0px) rotate(0deg) scale(1); }
+            80%     { transform: translate(  3px, 0px) rotate(0deg) scale(1); }
         }
+
+        /* Flash rojo del fondo en loop */
+        @keyframes overlayFlash {
+            0%,49%  { background: rgba(0,0,0,.72); }
+            50%,100%{ background: rgba(185,28,28,.55); }
+        }
+
+        /* Borde rojo pulsante alrededor del cuadro */
+        @keyframes borderPulse {
+            0%,100% { box-shadow: 0 0  0   0   rgba(220,38,38,0),
+                                  0 25px 50px -12px rgba(0,0,0,.5); }
+            50%     { box-shadow: 0 0  0  14px rgba(220,38,38,.45),
+                                  0 0  40px 6px rgba(220,38,38,.3),
+                                  0 25px 50px -12px rgba(0,0,0,.5); }
+        }
+
+        /* Pulso grande del tiempo "00:00" */
         @keyframes timerPulse {
-            0%,100% { opacity:1; transform:scale(1); }
-            50%      { opacity:.85; transform:scale(1.04); }
+            0%,100% { opacity:1;   transform:scale(1); }
+            50%     { opacity:.75; transform:scale(1.12); letter-spacing:.06em; }
         }
-        #timer-done-overlay { backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); transition:opacity .3s; }
-        #timer-done-box { animation: timerShake .8s ease-in-out 3, alertPop .3s cubic-bezier(.34,1.56,.64,1) both; }
-        #timer-done-box .done-time { animation: timerPulse 1.2s ease-in-out infinite; }
+
+        /* Parpadeo del emoji 🔔 */
+        @keyframes bellSpin {
+            0%,100% { transform: rotate(0deg); }
+            15%     { transform: rotate(-25deg); }
+            30%     { transform: rotate( 25deg); }
+            45%     { transform: rotate(-20deg); }
+            60%     { transform: rotate( 20deg); }
+            75%     { transform: rotate(-10deg); }
+            90%     { transform: rotate( 10deg); }
+        }
+
+        #timer-done-overlay {
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            transition: opacity .3s;
+        }
+        #timer-done-overlay.ringing {
+            animation: overlayFlash .6s ease-in-out 6;
+        }
+        #timer-done-box {
+            animation: alertPop .35s cubic-bezier(.34,1.56,.64,1) both;
+        }
+        #timer-done-box.ringing {
+            animation: timerShake .7s ease-in-out 4, borderPulse .6s ease-in-out 6;
+        }
+        #timer-done-box .done-time {
+            animation: timerPulse .8s ease-in-out infinite;
+        }
+        #timer-done-bell {
+            display:inline-block;
+            font-size:2.8rem;
+            line-height:1;
+            animation: bellSpin .5s ease-in-out 8;
+        }
+        @keyframes stripeScroll {
+            from { background-position: 0 0; }
+            to   { background-position: 56px 0; }
+        }
         /* ── Google Calendar ──────────────────────────────── */
         #gcal-status.gcal-connected { background-color:#d1fae5;color:#065f46;border-color:#6ee7b7; }
         #gcal-status.gcal-disconnected { background-color:#f3f4f6;color:#374151;border-color:#d1d5db; }
@@ -519,15 +577,22 @@
 </div>
 
 <!-- Modal vibración al finalizar -->
-<div id="timer-done-overlay" class="hidden fixed inset-0 bg-black bg-opacity-70 z-[10001] flex items-center justify-center">
-    <div id="timer-done-box" class="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 overflow-hidden text-center">
-        <div class="bg-gray-800 px-6 py-6">
-            <div class="done-time text-6xl font-black text-white tabular-nums mb-1">00:00</div>
-            <p class="text-gray-300 text-sm font-semibold tracking-widest uppercase">¡Tiempo!</p>
+<div id="timer-done-overlay" class="hidden fixed inset-0 z-[10001] flex items-center justify-center" style="background:rgba(0,0,0,.72)">
+    <div id="timer-done-box" class="bg-white rounded-2xl w-full max-w-xs mx-4 overflow-hidden text-center" style="box-shadow:0 25px 50px -12px rgba(0,0,0,.6)">
+        <!-- Cabecera roja -->
+        <div class="bg-red-600 px-6 pt-6 pb-5">
+            <div id="timer-done-bell" class="mb-2">🔔</div>
+            <div class="done-time text-7xl font-black text-white tabular-nums leading-none mb-2">00:00</div>
+            <p class="text-red-200 text-xs font-bold tracking-[.25em] uppercase">¡ Tiempo terminado !</p>
         </div>
-        <div class="px-6 py-6">
-            <p class="text-gray-700 text-base font-semibold mb-5">El temporizador ha llegado a cero.</p>
-            <button id="timer-done-ok" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl text-base transition">Aceptar</button>
+        <!-- Franja de alerta animada -->
+        <div id="timer-done-stripe" class="h-2 w-full" style="background:repeating-linear-gradient(45deg,#dc2626 0,#dc2626 10px,#fca5a5 10px,#fca5a5 20px);background-size:200% 100%;animation:stripeScroll 1s linear infinite"></div>
+        <!-- Cuerpo -->
+        <div class="px-6 py-5">
+            <p class="text-gray-600 text-sm mb-5">El tiempo definido ha llegado a cero.<br>Puedes iniciar un nuevo ciclo cuando estés listo.</p>
+            <button id="timer-done-ok" class="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-black py-3 rounded-xl text-base tracking-wide transition shadow-md">
+                ✓ Aceptar
+            </button>
         </div>
     </div>
 </div>
@@ -1348,19 +1413,54 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(match){const el=document.getElementById(match+'-btn');if(el)el.classList.add('active');}
     };
     const showTimerDone=()=>{
-        playBeep();playBeep();
-        const overlay=document.getElementById('timer-done-overlay');
-        // Resetear animación para que sacuda aunque se abra varias veces
-        const box=document.getElementById('timer-done-box');
-        box.style.animation='none';
-        requestAnimationFrame(()=>{
-            box.style.animation='';
-            overlay.classList.remove('hidden');
+        const overlay = document.getElementById('timer-done-overlay');
+        const box     = document.getElementById('timer-done-box');
+
+        // Vibración del dispositivo (móviles): patrón largo-corto-largo
+        if (navigator.vibrate) {
+            navigator.vibrate([400, 100, 400, 100, 600, 200, 600]);
+        }
+
+        // Resetear clases de animación para que funcionen aunque se abra varias veces
+        overlay.classList.remove('ringing');
+        box.classList.remove('ringing');
+        box.style.animation = 'none';
+
+        // Mostrar overlay
+        overlay.classList.remove('hidden');
+
+        // Forzar reflow antes de activar animaciones
+        void overlay.offsetWidth;
+
+        // alertPop: entrada suave del cuadro
+        box.style.animation = '';
+
+        // Activar animaciones de sacudida y flash tras un frame
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                overlay.classList.add('ringing');
+                box.classList.add('ringing');
+            });
         });
+
+        // Beeps escalonados para reforzar el aviso
+        playBeep();
+        setTimeout(playBeep, 350);
+        setTimeout(playBeep, 700);
+
+        // Segunda ola de vibración a los 2 segundos
+        if (navigator.vibrate) {
+            setTimeout(() => navigator.vibrate([300, 100, 300, 100, 500]), 2200);
+        }
     };
     document.getElementById('timer-done-ok').addEventListener('click',()=>{
-        document.getElementById('timer-done-overlay').classList.add('hidden');
-        document.title='Panel de Productividad';
+        const overlay = document.getElementById('timer-done-overlay');
+        const box     = document.getElementById('timer-done-box');
+        overlay.classList.add('hidden');
+        overlay.classList.remove('ringing');
+        box.classList.remove('ringing');
+        if (navigator.vibrate) navigator.vibrate(0); // detener vibración
+        document.title = 'Panel de Productividad';
     });
     const startPauseTimer=()=>{
         isTimerRunning=!isTimerRunning;
