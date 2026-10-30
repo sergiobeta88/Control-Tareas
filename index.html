@@ -396,6 +396,18 @@
             <p id="meeting-alert-time"  class="text-red-600 text-lg font-semibold mb-1"></p>
             <p id="meeting-alert-date"  class="text-gray-500 text-sm"></p>
         </div>
+        <!-- Actualización de avance (solo en avisos repetidos de tarea en curso) -->
+        <div id="alert-progress-block" class="hidden mx-6 mb-4 p-3 rounded-xl border border-blue-200 bg-blue-50 text-left">
+            <p class="text-sm font-bold text-blue-900 mb-2">Actualiza el avance de esta tarea</p>
+            <div class="flex items-center gap-3">
+                <input type="range" id="alert-progress-slider" min="0" max="100" step="1" value="0" class="flex-grow h-2 rounded-lg cursor-pointer accent-blue-600">
+                <span id="alert-progress-value" class="w-14 text-right text-xl font-black text-blue-700 tabular-nums">0%</span>
+            </div>
+            <div class="flex items-center justify-between gap-2 mt-2">
+                <p id="alert-progress-hint" class="text-[11px] text-blue-700">Mueve el control para poder cerrar este aviso.</p>
+                <button type="button" id="alert-progress-keep" class="flex-shrink-0 text-[11px] font-semibold text-blue-700 underline hover:text-blue-900">Sin cambios</button>
+            </div>
+        </div>
         <!-- Cola de alertas pendientes -->
         <div id="meeting-alert-queue-info" class="hidden mx-6 mb-4 py-2 px-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-semibold text-center"></div>
         <!-- Botón -->
@@ -1320,12 +1332,40 @@ document.addEventListener('DOMContentLoaded',()=>{
     // Modal bloqueante: reuniones (rojo) y tareas (azul)
     const alertQueue=[];
     let alertOpen=false;
+    let alertKeep=false,alertProgressInitial=0; // estado del control de avance del aviso actual
 
     const showAlert=(item, timing, type, extra)=>{
         // type: 'meeting' | 'task'  ·  extra: {elapsed} para avisos repetidos de tareas en curso
+        if(extra?.elapsed){
+            // Si ya hay un aviso "en curso" de esta misma tarea sin atender, solo se actualiza su tiempo
+            const ex=alertQueue.find(a=>a.type==='task'&&a.extra?.elapsed&&a.item.id===item.id);
+            if(ex){
+                ex.extra.elapsed=extra.elapsed;
+                if(ex===alertQueue[0])document.getElementById('meeting-alert-timing').textContent=`Tarea en curso · van ${extra.elapsed} min`;
+                return;
+            }
+        }
         alertQueue.push({item, timing, type, extra});
         if(!alertOpen) pumpAlert();
     };
+
+    // Habilita "Guardar avance y cerrar" solo cuando el usuario actualizó (o confirmó "sin cambios") el avance
+    const refreshAlertProgressUI=()=>{
+        const sl=document.getElementById('alert-progress-slider'),btn=document.getElementById('meeting-alert-ok');
+        const val=parseInt(sl.value,10),changed=val!==alertProgressInitial,ready=changed||alertKeep;
+        document.getElementById('alert-progress-value').textContent=val+'%';
+        document.getElementById('alert-progress-hint').textContent=ready
+            ?(changed?`Avance nuevo: ${val}% (antes ${alertProgressInitial}%)`:`Se mantiene en ${alertProgressInitial}%`)
+            :'Mueve el control para poder cerrar este aviso.';
+        btn.disabled=!ready;
+        btn.classList.toggle('opacity-50',!ready);
+        btn.classList.toggle('cursor-not-allowed',!ready);
+    };
+    document.getElementById('alert-progress-slider').addEventListener('input',()=>{alertKeep=false;refreshAlertProgressUI();});
+    document.getElementById('alert-progress-keep').addEventListener('click',()=>{
+        document.getElementById('alert-progress-slider').value=alertProgressInitial; // "sin cambios" = valor actual
+        alertKeep=true;refreshAlertProgressUI();
+    });
 
     const pumpAlert=()=>{
         if(!alertQueue.length){ alertOpen=false; return; }
@@ -1372,6 +1412,24 @@ document.addEventListener('DOMContentLoaded',()=>{
             document.getElementById('meeting-alert-date').textContent='';
         }
 
+        // Avisos repetidos de tarea en curso: hay que actualizar el % de avance antes de cerrar
+        const progBlock=document.getElementById('alert-progress-block');
+        const liveTask=(!isMeeting&&extra?.elapsed)?tasks.find(t=>t.id===item.id):null;
+        if(liveTask){
+            const sl=document.getElementById('alert-progress-slider');
+            alertProgressInitial=liveTask.progress||0;alertKeep=false;
+            sl.value=alertProgressInitial;
+            document.getElementById('alert-progress-value').textContent=alertProgressInitial+'%';
+            document.getElementById('alert-progress-keep').textContent=`Sin cambios (mantener ${alertProgressInitial}%)`;
+            progBlock.classList.remove('hidden');
+            btn.textContent='Guardar avance y cerrar';
+            refreshAlertProgressUI();
+        } else {
+            progBlock.classList.add('hidden');
+            btn.textContent='Entendido';
+            btn.disabled=false;
+        }
+
         // Cola pendiente
         const queueInfo=document.getElementById('meeting-alert-queue-info');
         if(alertQueue.length>1){
@@ -1388,6 +1446,13 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // Botón Entendido
     document.getElementById('meeting-alert-ok').addEventListener('click',()=>{
+        const cur=alertQueue[0];
+        // Aviso de tarea en curso: guardar el avance indicado (igual que el control del cronograma)
+        if(cur&&cur.type==='task'&&cur.extra?.elapsed&&!document.getElementById('alert-progress-block').classList.contains('hidden')){
+            if(document.getElementById('meeting-alert-ok').disabled)return;
+            const t=tasks.find(x=>x.id===cur.item.id),val=parseInt(document.getElementById('alert-progress-slider').value,10);
+            if(t&&t.progress!==val){t.progress=val;saveData();renderAll();}
+        }
         alertQueue.shift();
         document.getElementById('meeting-alert-overlay').classList.add('hidden');
         alertOpen=false;
