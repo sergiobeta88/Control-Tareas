@@ -1316,16 +1316,16 @@ document.addEventListener('DOMContentLoaded',()=>{
     const alertQueue=[];
     let alertOpen=false;
 
-    const showAlert=(item, timing, type)=>{
-        // type: 'meeting' | 'task'
-        alertQueue.push({item, timing, type});
+    const showAlert=(item, timing, type, extra)=>{
+        // type: 'meeting' | 'task'  ·  extra: {elapsed} para avisos repetidos de tareas en curso
+        alertQueue.push({item, timing, type, extra});
         if(!alertOpen) pumpAlert();
     };
 
     const pumpAlert=()=>{
         if(!alertQueue.length){ alertOpen=false; return; }
         alertOpen=true;
-        const {item, timing, type}=alertQueue[0];
+        const {item, timing, type, extra}=alertQueue[0];
         const isMeeting = type==='meeting';
         const DAYS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 
@@ -1346,7 +1346,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 
         // Etiqueta de tiempo
         document.getElementById('meeting-alert-timing').textContent=
-            timing===0 ? '¡Ahora!' : `En ${timing} minutos`;
+            extra?.elapsed ? `Tarea en curso · van ${extra.elapsed} min`
+            : timing===0 ? '¡Ahora!' : `En ${timing} minutos`;
 
         // Título
         document.getElementById('meeting-alert-title').textContent=
@@ -1389,7 +1390,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
 
     const checkAllAlerts=()=>{
-        const now=new Date(), ts=now.toISOString().split('T')[0];
+        const now=new Date();
+        // Fecha LOCAL de hoy (toISOString usaba UTC y después de las 7 p. m. en Colombia ya era "mañana")
+        const ts=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
         const chk=(item,type)=>{
             if(!item.startTime)return;
             const[h,m]=item.startTime.split(':').map(Number),t=new Date();
@@ -1404,8 +1407,27 @@ document.addEventListener('DOMContentLoaded',()=>{
                 showAlert(item,0,type);
             }
         };
+        // Mientras la tarea está en su horario planificado, repetir el aviso cada 10 minutos
+        // (a los 10, 20, 30... min de iniciada y antes de la hora de fin). Se detiene al
+        // completar la tarea (100 %) o al terminar su horario.
+        const REPEAT_MIN=10;
+        const chkOngoing=item=>{
+            if(!item.startTime||!item.endTime)return;
+            const[sh,sm]=item.startTime.split(':').map(Number),[eh,em]=item.endTime.split(':').map(Number);
+            const s=new Date(now),e=new Date(now);
+            s.setHours(sh,sm,0,0);e.setHours(eh,em,0,0);
+            if(now<s||now>=e)return;
+            const elapsed=Math.floor((now-s)/60000);        // minutos desde el inicio
+            const slot=Math.floor(elapsed/REPEAT_MIN);      // 1 = a los 10 min, 2 = a los 20...
+            if(slot<1)return;
+            if(elapsed-slot*REPEAT_MIN>=2)return;           // solo al cruzar el múltiplo de 10 (tolera un ciclo perdido)
+            const key=`task-${item.id}-${item.plannedDate}-${item.startTime}-r${slot}`;
+            if(firedAlerts.has(key))return;
+            firedAlerts.add(key);
+            showAlert(item,0,'task',{elapsed:slot*REPEAT_MIN});
+        };
         meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting'));
-        tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>chk(t,'task'));
+        tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>{chk(t,'task');chkOngoing(t);});
     };
     const updateTimerDisplay=()=>{
         const mm=Math.floor(timeRemaining/60).toString().padStart(2,'0');
