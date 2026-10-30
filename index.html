@@ -64,6 +64,11 @@
         .hist-day-row { transition:all .15s; }
         .hist-day-row:hover { background:#f0f4ff; }
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
+        /* ── Estirar la duración de una tarea en el cronograma ── */
+        .resize-handle { position:absolute; left:0; right:0; bottom:-3px; height:10px; cursor:ns-resize; touch-action:none; z-index:5; display:flex; align-items:center; justify-content:center; }
+        .resize-handle::after { content:""; width:26px; height:3px; border-radius:2px; background:rgba(37,99,235,.6); opacity:0; transition:opacity .15s; }
+        .task-card:hover .resize-handle::after, .resize-handle:hover::after { opacity:1; }
+        #resize-hint { position:fixed; z-index:10002; background:#1e3a8a; color:#fff; font-size:11px; font-weight:700; padding:3px 8px; border-radius:6px; pointer-events:none; white-space:nowrap; box-shadow:0 4px 10px rgba(0,0,0,.25); }
         /* ── Arrastrar tareas al cronograma ───────────────── */
         .task-card[draggable="true"].dragging { opacity:.45; }
         .planner-drop-zone.drop-active { background:rgba(59,130,246,.04); outline:2px dashed #93c5fd; outline-offset:2px; border-radius:6px; }
@@ -1133,7 +1138,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 const prHtml=done?`<span class="text-xs font-bold text-green-700">✔ COMPLETADA</span>`:`<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px]">${ev.progress}%</span></div>`;
                 const sm=dur<0.75;
                 const stip=ev.subtasks?.length>0?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60]"><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:'';
-                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
+                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="resize-handle" title="Arrastra hacia abajo o arriba para cambiar la duración"></div><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
                 return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
@@ -1658,7 +1663,54 @@ document.addEventListener('DOMContentLoaded',()=>{
         else if(window.innerHeight-e.clientY<edge)window.scrollBy(0,step);
     });
     // Cronograma: recibe tareas del listado y permite mover las ya agendadas (se usa en ambos cronogramas)
+    let resizeSuppressClickUntil=0;
+    const fmtDuration=h=>{const m=Math.round(h*60),H=Math.floor(m/60),M=m%60;return[H?`${H} h`:'',M?`${M} min`:''].filter(Boolean).join(' ');};
     const attachPlannerDnd=container=>{
+        // Estirar el borde inferior de una tarea agendada para cambiar su hora de fin (bloques de 15 min)
+        container.addEventListener('pointerdown',e=>{
+            const handle=e.target.closest('.resize-handle');if(!handle)return;
+            if(e.pointerType==='mouse'&&e.button!==0)return;
+            const card=handle.closest('.task-card'),zone=handle.closest('.planner-drop-zone');
+            const task=card&&tasks.find(t=>t.id===card.dataset.id);
+            if(!task||!zone||!task.startTime||!task.endTime)return;
+            e.preventDefault();e.stopPropagation();
+            card.draggable=false; // evitar que el navegador inicie un arrastre de la tarjeta
+            document.getElementById('subtask-global-tip')?.classList.add('hidden');
+            const id=task.id,hh=+zone.dataset.hh,eh=+zone.dataset.eh;
+            const s=parseTime(task.startTime),origEnd=parseTime(task.endTime);
+            const maxEnd=Math.min(eh+1,23.75),minEnd=s+0.25; // mínimo 15 min; no pasar del final del cronograma
+            const y0=e.clientY;let newEnd=origEnd;
+            const hint=document.createElement('div');hint.id='resize-hint';document.body.appendChild(hint);
+            const paint=(x,y)=>{
+                const live=container.querySelector(`.task-card[data-id="${id}"]`);
+                if(live)live.style.height=Math.max(20,(newEnd-s)*hh-2)+'px';
+                hint.textContent=`${dndToHHMM(s)} – ${dndToHHMM(newEnd)} · ${fmtDuration(newEnd-s)}`;
+                hint.style.left=(x+14)+'px';hint.style.top=(y+14)+'px';
+            };
+            const move=ev=>{
+                newEnd=Math.max(minEnd,Math.min(Math.round((origEnd+(ev.clientY-y0)/hh)*4)/4,maxEnd));
+                paint(ev.clientX,ev.clientY);
+            };
+            const stop=commit=>{
+                document.removeEventListener('pointermove',move);
+                document.removeEventListener('pointerup',onUp);
+                document.removeEventListener('pointercancel',onCancel);
+                hint.remove();
+                resizeSuppressClickUntil=Date.now()+400; // el "clic" que sigue al soltar no debe abrir la ficha
+                const cur=tasks.find(t=>t.id===id); // puede haberse reemplazado si llegó una actualización de Firebase
+                if(commit&&cur&&newEnd!==origEnd){cur.endTime=dndToHHMM(newEnd);saveData();}
+                renderAll();
+            };
+            const onUp=()=>stop(true),onCancel=()=>stop(false);
+            document.addEventListener('pointermove',move);
+            document.addEventListener('pointerup',onUp);
+            document.addEventListener('pointercancel',onCancel);
+            paint(e.clientX,e.clientY);
+        });
+        // Un clic en el borde de estirar (o justo después de estirar) no debe abrir la ficha
+        container.addEventListener('click',e=>{
+            if(Date.now()<resizeSuppressClickUntil||e.target.closest('.resize-handle')){e.stopPropagation();e.preventDefault();}
+        },true);
         // El control deslizante de avance no debe iniciar el arrastre de la tarjeta
         container.addEventListener('mousedown',e=>{
             const sl=e.target.closest('.progress-slider');if(!sl)return;
