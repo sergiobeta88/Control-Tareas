@@ -476,6 +476,14 @@
                     <button type="button" id="add-subtask-btn" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Añadir</button>
                 </div>
             </div>
+            <div id="comments-section" class="border-t pt-4 mt-6">
+                <h3 class="text-lg font-medium mb-3 flex items-center justify-between">💬 Comentarios <span id="comments-count" class="text-xs font-semibold text-gray-400"></span></h3>
+                <div id="comments-list" class="space-y-2 mb-3 max-h-60 overflow-y-auto"></div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <textarea id="new-comment-text" rows="2" maxlength="300" placeholder="Nuevo comentario..." class="flex-grow p-2 border border-gray-300 rounded-md resize-none"></textarea>
+                    <button type="button" id="add-comment-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600 sm:self-end">Añadir</button>
+                </div>
+            </div>
             <div class="flex justify-end gap-3 mt-8">
                 <button type="button" id="deleteTaskBtn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
                 <button type="button" id="closeModalBtn" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
@@ -761,10 +769,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     // task.comments = [{text, date, progress}, ...]; en pantalla solo se muestra el último.
     const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const getLastComment=t=>{const c=t&&t.comments;return(Array.isArray(c)&&c.length)?c[c.length-1]:null;};
-    const commentTipHtml=c=>{
+    const genId=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const commentKey=c=>c.id||`${c.date}|${c.text}`; // identifica un comentario (los antiguos no tienen id)
+    const commentMeta=c=>{
         const d=c.date?new Date(c.date):null;
         const when=(d&&!isNaN(d))?d.toLocaleString('es-CO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
-        const meta=[when,(c.progress!=null?`avance ${c.progress}%`:'')].filter(Boolean).join(' · ');
+        return[when,(c.progress!=null?`avance ${c.progress}%`:''),(c.editedAt?'editado':'')].filter(Boolean).join(' · ');
+    };
+    const commentTipHtml=c=>{
+        const meta=commentMeta(c);
         return`<div class="comment-tip rounded border border-yellow-300 bg-yellow-100 text-yellow-900 p-2"><p class="font-bold mb-0.5">💬 Último comentario</p><p class="whitespace-pre-wrap break-words leading-snug">${escHtml(c.text)}</p>${meta?`<p class="text-[10px] text-yellow-700 mt-1">${meta}</p>`:''}</div>`;
     };
     const formatDateDisplay=s=>{if(!s)return'N/A';return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'});};
@@ -1302,10 +1315,46 @@ document.addEventListener('DOMContentLoaded',()=>{
     // ── Modales ───────────────────────────────────────────────────────────────
     const openModal=(el,mc)=>{el.classList.remove('hidden');setTimeout(()=>{el.classList.remove('opacity-0');mc?.classList.remove('scale-95');},10);};
     const closeModal=(el,mc,cb)=>{el.classList.add('opacity-0');mc?.classList.add('scale-95');setTimeout(()=>{el.classList.add('hidden');cb?.();},300);};
+    // ── Comentarios en la ficha de la tarea ───────────────────────────────────
+    // Se editan en memoria y se guardan con "Guardar Tarea" (igual que el checklist).
+    let currentComments=[],editingCommentIdx=-1,commentsLoadedKeys=new Set(),modalProgressLoaded=0;
+    const renderCommentsInModal=()=>{
+        const list=document.getElementById('comments-list');
+        document.getElementById('comments-count').textContent=currentComments.length?`${currentComments.length} comentario${currentComments.length!==1?'s':''}`:'';
+        if(!currentComments.length){list.innerHTML='<p class="text-sm text-gray-400">Aún no hay comentarios.</p>';return;}
+        const lastIdx=currentComments.length-1;
+        // más reciente arriba; el índice real se conserva en data-idx
+        list.innerHTML=currentComments.map((c,i)=>({c,i})).reverse().map(({c,i})=>{
+            const hl=i===lastIdx?'bg-yellow-100 border-yellow-300':'bg-gray-50 border-gray-200';
+            if(i===editingCommentIdx){
+                return`<div class="comment-item rounded-md border p-2 ${hl}" data-idx="${i}"><textarea class="comment-edit-input w-full p-2 border border-blue-300 rounded-md text-sm resize-none bg-white" rows="3" maxlength="300">${escHtml(c.text)}</textarea><div class="flex justify-end gap-2 mt-1"><button type="button" class="comment-cancel-btn text-xs font-semibold text-gray-600 px-2 py-1 rounded hover:bg-gray-200" data-idx="${i}">Cancelar</button><button type="button" class="comment-save-btn text-xs font-semibold text-white bg-blue-600 px-2 py-1 rounded hover:bg-blue-700" data-idx="${i}">✓ Guardar</button></div></div>`;
+            }
+            return`<div class="comment-item rounded-md border p-2 ${hl}" data-idx="${i}"><div class="flex items-start justify-between gap-2"><p class="text-sm whitespace-pre-wrap break-words flex-grow text-gray-800">${escHtml(c.text)}</p><button type="button" class="comment-edit-btn flex-shrink-0 text-xs font-semibold text-blue-600 hover:text-blue-800" data-idx="${i}">✎ Editar</button></div><p class="text-[10px] text-gray-500 mt-1">${commentMeta(c)}${i===lastIdx?' · último':''}</p></div>`;
+        }).join('');
+    };
+    const modalProgressForComment=()=>dom.isRepetitiveCheckbox.checked?null:(parseInt(dom.taskForm.progress.value,10)||0);
+    const addCommentFromInput=()=>{
+        const ta=document.getElementById('new-comment-text'),text=ta.value.trim();
+        if(!text)return false;
+        currentComments.push({id:genId(),text,date:new Date().toISOString(),progress:modalProgressForComment()});
+        ta.value='';return true;
+    };
+    const applyCommentEdit=()=>{
+        if(editingCommentIdx<0)return true;
+        const inp=document.querySelector('#comments-list .comment-edit-input');
+        const text=inp?inp.value.trim():'';
+        if(!text)return false; // no se permite dejar un comentario vacío
+        const c=currentComments[editingCommentIdx];
+        if(c&&c.text!==text){c.text=text;c.editedAt=new Date().toISOString();}
+        editingCommentIdx=-1;return true;
+    };
+    // Si al guardar la tarea quedó texto escrito sin confirmar, se incluye para no perderlo
+    const commitPendingComments=()=>{applyCommentEdit();addCommentFromInput();editingCommentIdx=-1;};
     const openTaskModal=()=>openModal(dom.taskModal,dom.modalContent);
-    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
+    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];currentComments=[];editingCommentIdx=-1;commentsLoadedKeys=new Set();dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
     const openEditTaskModal=(task,initialTime=null)=>{
         dom.taskForm.reset();populateModalSelects();
+        currentComments=JSON.parse(JSON.stringify(task?.comments||[]));commentsLoadedKeys=new Set(currentComments.map(commentKey));editingCommentIdx=-1;modalProgressLoaded=task?.id?(task.progress||0):0;
         const isRep=!!task.isRepetitive;dom.isRepetitiveCheckbox.checked=isRep;
         if(task?.id){
             dom.modalTitle.innerText='Editar Tarea';dom.taskForm.taskId.value=task.id;dom.taskForm.taskType.value=task.type||'laboral';dom.taskForm.description.value=task.description;dom.taskForm.taskSize.value=task.taskSize||'Mediana';dom.taskForm.importance.value=task.isImportant;dom.taskForm.urgency.value=task.isUrgent;dom.taskForm.isDelegated.checked=task.isDelegated;dom.taskForm.progress.value=task.progress||0;dom.progressLabel.textContent=`${task.progress||0}%`;
@@ -1321,12 +1370,19 @@ document.addEventListener('DOMContentLoaded',()=>{
         // Limpiar buscador de etiquetas y mostrar todas las opciones
         dom.tagSearchInput.value='';
         Array.from(dom.tagsSelect.options).forEach(o=>{o.style.display='';});
-        renderSubtasksInModal();openTaskModal();
+        renderSubtasksInModal();renderCommentsInModal();openTaskModal();
     };
     const saveTask=e=>{
-        e.preventDefault();const id=dom.taskForm.taskId.value,selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value),isRep=dom.isRepetitiveCheckbox.checked;
+        e.preventDefault();commitPendingComments();const id=dom.taskForm.taskId.value,selTags=Array.from(dom.tagsSelect.selectedOptions).map(o=>o.value),isRep=dom.isRepetitiveCheckbox.checked;
         const td={type:dom.taskForm.taskType.value,description:dom.taskForm.description.value,taskSize:dom.taskForm.taskSize.value,responsible:dom.responsibleSelect.value||null,isImportant:dom.taskForm.importance.value==='true',isUrgent:dom.taskForm.urgency.value==='true',dueDate:isRep?null:dom.taskForm.dueDate.value,tags:selTags,isDelegated:isRep?false:dom.taskForm.isDelegated.checked,isRepetitive:isRep,plannedDate:(isRep||dom.taskForm.isDelegated.checked)?null:dom.taskForm.plannedDate.value||null,startTime:dom.taskForm.startTime.value||null,endTime:dom.taskForm.endTime.value||null,subtasks:[...currentSubtasks]};
-        if(id)td.progress=parseInt(dom.taskForm.progress.value,10);
+        // El avance solo se sobrescribe si se cambió en la ficha (si un aviso lo actualizó mientras estaba abierta, se respeta)
+        if(id){const pv=parseInt(dom.taskForm.progress.value,10);if(pv!==modalProgressLoaded)td.progress=pv;}
+        {   // comentarios: los de la ficha + los añadidos desde otro lugar (p. ej. un aviso de avance) mientras estaba abierta
+            const fresh=id?tasks.find(t=>t.id===id):null;
+            const extra=fresh?(fresh.comments||[]).filter(c=>!commentsLoadedKeys.has(commentKey(c))):[];
+            const merged=[...currentComments,...extra].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+            if(merged.length||fresh?.comments?.length)td.comments=merged;
+        }
         const fin={...(id?tasks.find(t=>t.id===id):{}),...td};
         if(!id){fin.id=Date.now().toString();fin.progress=0;fin.completedDates=[];}
         if(id)tasks[tasks.findIndex(t=>t.id===id)]=fin;else tasks.push(fin);
@@ -1474,7 +1530,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 let changed=false;
                 if(t.progress!==val){t.progress=val;changed=true;}
                 // El comentario es opcional: solo se guarda si se escribió algo
-                if(comment){t.comments=[...(t.comments||[]),{text:comment,date:new Date().toISOString(),progress:val}];changed=true;}
+                if(comment){t.comments=[...(t.comments||[]),{id:genId(),text:comment,date:new Date().toISOString(),progress:val}];changed=true;}
                 if(changed){saveData();renderAll();}
             }
         }
@@ -2123,6 +2179,27 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     dom.isDelegatedCheckbox.addEventListener('change',e=>{dom.plannedDateContainer.style.display=e.target.checked?'none':'block';if(e.target.checked)plannedDatepicker.clear();});
     dom.isRepetitiveCheckbox.addEventListener('change',e=>{const r=e.target.checked;dom.dateControlsContainer.classList.toggle('hidden',r);dom.delegatedContainer.classList.toggle('hidden',r);dom.progressContainerModal.classList.toggle('hidden',r);dom.plannedDateContainer.style.display=r?'none':(dom.isDelegatedCheckbox.checked?'none':'block');if(r){plannedDatepicker.clear();dueDatepicker.clear();dom.isDelegatedCheckbox.checked=false;}});
+    // Comentarios en la ficha: añadir, editar, confirmar/cancelar edición
+    document.getElementById('add-comment-btn').addEventListener('click',()=>{if(addCommentFromInput())renderCommentsInModal();});
+    document.getElementById('new-comment-text').addEventListener('keydown',e=>{
+        if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(addCommentFromInput())renderCommentsInModal();}
+    });
+    document.getElementById('comments-list').addEventListener('click',e=>{
+        const edit=e.target.closest('.comment-edit-btn'),save=e.target.closest('.comment-save-btn'),cancel=e.target.closest('.comment-cancel-btn');
+        if(edit){
+            if(!applyCommentEdit())return; // si hay otra edición con texto vacío, no se cambia
+            editingCommentIdx=parseInt(edit.dataset.idx,10);renderCommentsInModal();
+            document.querySelector('#comments-list .comment-edit-input')?.focus();
+        }else if(save){
+            if(applyCommentEdit())renderCommentsInModal();
+            else document.querySelector('#comments-list .comment-edit-input')?.focus();
+        }else if(cancel){editingCommentIdx=-1;renderCommentsInModal();}
+    });
+    document.getElementById('comments-list').addEventListener('keydown',e=>{
+        if(!e.target.classList.contains('comment-edit-input'))return;
+        if(e.key==='Escape'){e.preventDefault();e.stopPropagation();editingCommentIdx=-1;renderCommentsInModal();}
+        else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(applyCommentEdit())renderCommentsInModal();}
+    });
     dom.addSubtaskBtn.addEventListener('click',()=>{const t=dom.newSubtaskText.value.trim();if(!t)return;currentSubtasks.push({id:Date.now().toString(),text:t,responsible:dom.newSubtaskResponsible.value.trim(),isCompleted:false});dom.newSubtaskText.value='';dom.newSubtaskResponsible.value='';renderSubtasksInModal();});
     dom.subtasksList.addEventListener('click',e=>{const id=e.target.dataset.id;if(e.target.classList.contains('subtask-checkbox')){currentSubtasks.find(s=>s.id===id).isCompleted=e.target.checked;renderSubtasksInModal();}if(e.target.classList.contains('delete-subtask-btn')){currentSubtasks=currentSubtasks.filter(s=>s.id!==id);renderSubtasksInModal();}});
     dom.exportBtn.addEventListener('click',()=>{const blob=new Blob([JSON.stringify({tasks,meetings,allTags,allResponsibles},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='control-tareas.json';a.click();URL.revokeObjectURL(url);});
