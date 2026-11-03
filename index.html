@@ -64,6 +64,9 @@
         .hist-day-row { transition:all .15s; }
         .hist-day-row:hover { background:#f0f4ff; }
         .hist-day-row.active-row { background:#eff6ff; border-left:3px solid #3b82f6; }
+        /* La tarjeta con el cursor encima (y su cuadro de checklist/comentario) debe verse sobre las demás tareas y reuniones.
+           Al hacer hover la tarjeta aplica transform, lo que crea su propio plano de apilamiento: sin esto las reuniones (z-index:10) la tapaban. */
+        .task-card.absolute:hover { z-index: 30; }
         /* ── Estirar la duración de una tarea en el cronograma ── */
         .resize-handle { position:absolute; left:0; right:0; bottom:-3px; height:10px; cursor:ns-resize; touch-action:none; z-index:5; display:flex; align-items:center; justify-content:center; }
         .resize-handle::after { content:""; width:26px; height:3px; border-radius:2px; background:rgba(37,99,235,.6); opacity:0; transition:opacity .15s; }
