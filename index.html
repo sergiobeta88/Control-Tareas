@@ -403,6 +403,7 @@
                 <input type="range" id="alert-progress-slider" min="0" max="100" step="1" value="0" class="flex-grow h-2 rounded-lg cursor-pointer accent-blue-600">
                 <span id="alert-progress-value" class="w-14 text-right text-xl font-black text-blue-700 tabular-nums">0%</span>
             </div>
+            <textarea id="alert-progress-comment" rows="2" maxlength="300" placeholder="Comentario (opcional)…" class="w-full mt-2 p-2 text-sm border border-blue-200 rounded-lg bg-white text-gray-800 focus:outline-none focus:border-blue-400 resize-none"></textarea>
             <div class="flex items-center justify-between gap-2 mt-2">
                 <p id="alert-progress-hint" class="text-[11px] text-blue-700">Mueve el control para poder cerrar este aviso.</p>
                 <button type="button" id="alert-progress-keep" class="flex-shrink-0 text-[11px] font-semibold text-blue-700 underline hover:text-blue-900">Sin cambios</button>
@@ -753,6 +754,16 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     const parseTime=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h+m/60;};
+    // ── Comentarios de avance ─────────────────────────────────────────────────
+    // task.comments = [{text, date, progress}, ...]; en pantalla solo se muestra el último.
+    const escHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const getLastComment=t=>{const c=t&&t.comments;return(Array.isArray(c)&&c.length)?c[c.length-1]:null;};
+    const commentTipHtml=c=>{
+        const d=c.date?new Date(c.date):null;
+        const when=(d&&!isNaN(d))?d.toLocaleString('es-CO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+        const meta=[when,(c.progress!=null?`avance ${c.progress}%`:'')].filter(Boolean).join(' · ');
+        return`<div class="comment-tip rounded border border-yellow-300 bg-yellow-100 text-yellow-900 p-2"><p class="font-bold mb-0.5">💬 Último comentario</p><p class="whitespace-pre-wrap break-words leading-snug">${escHtml(c.text)}</p>${meta?`<p class="text-[10px] text-yellow-700 mt-1">${meta}</p>`:''}</div>`;
+    };
     const formatDateDisplay=s=>{if(!s)return'N/A';return new Date(s+'T00:00:00').toLocaleDateString('es-ES',{weekday:'short',month:'short',day:'numeric'});};
     const updatePlannerClock=()=>{
         const now=new Date();
@@ -1074,8 +1085,11 @@ document.addEventListener('DOMContentLoaded',()=>{
             :'';
         // data-subtasks guarda el JSON para que el tooltip global lo lea
         const subsAttr=subs.length>0?` data-subtasks='${JSON.stringify(subs).replace(/'/g,"&#39;")}'`:'';
+        const lcm=getLastComment(task);
+        const lcAttr=lcm?` data-lastcomment="${encodeURIComponent(JSON.stringify(lcm))}"`:'';
+        const commentBadge=lcm?'<span class="text-[11px]" title="Tiene comentario">💬</span>':'';
         const dragAttr=task.isDelegated?'':' draggable="true" title="Arrastra al cronograma para agendar"';
-        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls}${task.isDelegated?'':' cursor-grab'}"${subsAttr}${dragAttr} data-id="${task.id}" style="overflow:visible">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<div class="flex items-center justify-between mt-0.5"><p class="text-xs font-bold text-indigo-600">${task.progress||0}%</p>${checklistBadge}</div></div>`;
+        return`<div class="task-card relative pl-3 pr-2 py-2 rounded-md shadow-sm border ${borderCls} ${bgCls}${task.isDelegated?'':' cursor-grab'}"${subsAttr}${lcAttr}${dragAttr} data-id="${task.id}" style="overflow:visible">${priorityBar}${ind}<p class="font-medium text-sm pr-5 truncate">${task.description}</p><div class="flex items-center justify-between mt-1 gap-1"><p class="text-xs text-gray-500">Vence: ${formatDateDisplay(task.dueDate)}</p>${priorityLabel}</div>${tagPillsHtml}<div class="flex items-center justify-between mt-0.5"><p class="text-xs font-bold text-indigo-600">${task.progress||0}%</p><span class="flex items-center gap-1.5">${commentBadge}${checklistBadge}</span></div></div>`;
     };
     const renderMatrix=()=>{
         // Limpiar contenedor de grupos por etiqueta
@@ -1149,7 +1163,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 let hl=done?'bg-green-100 border-green-300 text-gray-700':combined?(ev.taskType==='laboral'?'bg-blue-100 border-blue-300 text-blue-900':'bg-orange-100 border-orange-300 text-orange-900'):(ev.isDelegated?'bg-purple-100 border-purple-300':'bg-blue-100 border-blue-300 text-blue-900');
                 const prHtml=done?`<span class="text-xs font-bold text-green-700">✔ COMPLETADA</span>`:`<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px]">${ev.progress}%</span></div>`;
                 const sm=dur<0.75;
-                const stip=ev.subtasks?.length>0?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60]"><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:'';
+                const lc=getLastComment(ev);const stip=(ev.subtasks?.length>0||lc)?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60] space-y-2">${ev.subtasks?.length>0?`<div><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:''}${lc?commentTipHtml(lc):''}</div>`:'';
                 return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="resize-handle" title="Arrastra hacia abajo o arriba para cambiar la duración"></div><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
@@ -1419,6 +1433,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             const sl=document.getElementById('alert-progress-slider');
             alertProgressInitial=liveTask.progress||0;alertKeep=false;
             sl.value=alertProgressInitial;
+            document.getElementById('alert-progress-comment').value='';
             document.getElementById('alert-progress-value').textContent=alertProgressInitial+'%';
             document.getElementById('alert-progress-keep').textContent=`Sin cambios (mantener ${alertProgressInitial}%)`;
             progBlock.classList.remove('hidden');
@@ -1451,7 +1466,14 @@ document.addEventListener('DOMContentLoaded',()=>{
         if(cur&&cur.type==='task'&&cur.extra?.elapsed&&!document.getElementById('alert-progress-block').classList.contains('hidden')){
             if(document.getElementById('meeting-alert-ok').disabled)return;
             const t=tasks.find(x=>x.id===cur.item.id),val=parseInt(document.getElementById('alert-progress-slider').value,10);
-            if(t&&t.progress!==val){t.progress=val;saveData();renderAll();}
+            const comment=document.getElementById('alert-progress-comment').value.trim();
+            if(t){
+                let changed=false;
+                if(t.progress!==val){t.progress=val;changed=true;}
+                // El comentario es opcional: solo se guarda si se escribió algo
+                if(comment){t.comments=[...(t.comments||[]),{text:comment,date:new Date().toISOString(),progress:val}];changed=true;}
+                if(changed){saveData();renderAll();}
+            }
         }
         alertQueue.shift();
         document.getElementById('meeting-alert-overlay').classList.add('hidden');
@@ -2332,9 +2354,11 @@ document.addEventListener('DOMContentLoaded',()=>{
         const tip = document.getElementById('subtask-global-tip');
         let hideTimer = null;
 
-        const buildTipHtml = (subs) => {
+        const buildTipHtml = (subs, lc) => {
             const done = subs.filter(s => s.isCompleted).length;
             const allDone = done === subs.length;
+            const commentHtml = lc ? `<div class="${subs.length ? 'mt-2' : ''}">${commentTipHtml(lc)}</div>` : '';
+            if (!subs.length) return commentHtml;
             return `<p class="font-bold text-gray-700 border-b border-gray-100 pb-1.5 mb-2 flex items-center justify-between">
                         <span>📋 Checklist</span>
                         <span class="text-[10px] font-semibold ${allDone ? 'text-green-600' : 'text-gray-400'}">${done}/${subs.length}</span>
@@ -2347,7 +2371,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                         <span class="leading-snug ${s.isCompleted ? 'line-through text-gray-400' : 'text-gray-700'}">
                             ${s.text}${s.responsible ? `<span class="ml-1 text-gray-400 not-italic">(${s.responsible})</span>` : ''}
                         </span>
-                    </div>`).join('');
+                    </div>`).join('') + commentHtml;
         };
 
         const positionTip = (e) => {
@@ -2367,13 +2391,14 @@ document.addEventListener('DOMContentLoaded',()=>{
         };
 
         document.addEventListener('mouseover', e => {
-            const card = e.target.closest('.task-card[data-subtasks]');
+            const card = e.target.closest('.task-card[data-subtasks],.task-card[data-lastcomment]');
             if (!card) return;
             clearTimeout(hideTimer);
             try {
-                const subs = JSON.parse(card.dataset.subtasks);
-                if (!subs.length) return;
-                tip.innerHTML = buildTipHtml(subs);
+                const subs = card.dataset.subtasks ? JSON.parse(card.dataset.subtasks) : [];
+                const lc = card.dataset.lastcomment ? JSON.parse(decodeURIComponent(card.dataset.lastcomment)) : null;
+                if (!subs.length && !lc) return;
+                tip.innerHTML = buildTipHtml(subs, lc);
                 tip.classList.remove('hidden');
                 positionTip(e);
             } catch(_) {}
@@ -2384,7 +2409,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         });
 
         document.addEventListener('mouseout', e => {
-            const card = e.target.closest('.task-card[data-subtasks]');
+            const card = e.target.closest('.task-card[data-subtasks],.task-card[data-lastcomment]');
             if (!card) return;
             hideTimer = setTimeout(() => tip.classList.add('hidden'), 120);
         });
