@@ -376,6 +376,25 @@
     </div>
 </div>
 
+<!-- ══ SOLICITUD HORARIA DE SINCRONIZACIÓN CON GOOGLE CALENDAR ══ -->
+<div id="gcal-sync-prompt" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black bg-opacity-50">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <div class="bg-green-600 px-6 py-4 flex items-center gap-3">
+            <span class="text-3xl">📅</span>
+            <h3 class="text-white font-bold text-lg leading-tight">Sincronizar Google Calendar</h3>
+        </div>
+        <div class="px-6 py-5">
+            <p id="gcal-prompt-msg" class="text-gray-800 text-sm mb-1"></p>
+            <p id="gcal-prompt-last" class="text-xs text-gray-400 mb-1"></p>
+            <p id="gcal-prompt-note" class="text-xs text-green-700 mb-4"></p>
+            <div class="flex gap-2 mt-4">
+                <button type="button" id="gcal-prompt-later" class="flex-1 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-sm transition">Más tarde</button>
+                <button type="button" id="gcal-prompt-sync" class="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm transition">Sincronizar ahora</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ══ ALERTA MODAL DE REUNIONES ══ -->
 <div id="meeting-alert-overlay" class="hidden fixed inset-0 bg-black bg-opacity-60 z-[10000] flex items-center justify-center">
     <div id="meeting-alert-box" class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
@@ -1579,6 +1598,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         };
         meetings.filter(m=>m.date===ts&&!m.completed).forEach(m=>chk(m,'meeting'));
         tasks.filter(t=>t.plannedDate===ts&&t.progress<100&&!t.isRepetitive).forEach(t=>{chk(t,'task');chkOngoing(t);});
+        checkGcalSyncPrompt(); // solicitud horaria de sincronización con Google Calendar
     };
     const updateTimerDisplay=()=>{
         const mm=Math.floor(timeRemaining/60).toString().padStart(2,'0');
@@ -2272,6 +2292,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     const GCAL_API_BASE  = 'https://www.googleapis.com/calendar/v3';
 
     let gcalToken = null;
+    let gcalTokenExpiry = 0; // el permiso de Google dura ~1 hora; se guarda cuándo vence
+    const gcalTokenValid = () => !!gcalToken && Date.now() < gcalTokenExpiry;
     let gcalSyncInterval = null;
 
     const gcalSetStatus = (cls, text) => {
@@ -2294,6 +2316,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             callback: async (resp) => {
                 if (resp.error) { gcalSetStatus('gcal-disconnected', 'Google Calendar'); return; }
                 gcalToken = resp.access_token;
+                gcalTokenExpiry = Date.now() + (Number(resp.expires_in) || 3600) * 1000 - 60000; // 1 min de margen
                 localStorage.setItem('gcal_token', gcalToken);
                 gcalSetStatus('gcal-connected', '✓ Google Calendar');
                 await gcalSync(); // sincronización inicial al conectar
@@ -2329,8 +2352,9 @@ document.addEventListener('DOMContentLoaded',()=>{
             `timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}` +
             `&singleEvents=true&orderBy=startTime&maxResults=100`;
         const res = await fetch(url, { headers: { Authorization: `Bearer ${gcalToken}` } });
-        if (res.status === 401) { gcalToken = null; localStorage.removeItem('gcal_token'); gcalSetStatus('gcal-disconnected','Google Calendar'); return []; }
-        if (!res.ok) return [];
+        // Si falla (permiso vencido u otro error) se devuelve null: NO debe interpretarse como "sin reuniones"
+        if (res.status === 401) { gcalToken = null; gcalTokenExpiry = 0; localStorage.removeItem('gcal_token'); return null; }
+        if (!res.ok) return null;
         const data = await res.json();
         return data.items || [];
     };
@@ -2358,11 +2382,16 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
 
     const gcalSync = async () => {
-        if (!gcalToken) return;
+        if (!gcalToken) return false;
         const ind = document.getElementById('gcal-sync-indicator');
         if (ind) ind.classList.remove('hidden');
         try {
             const events = await gcalFetchEvents('primary');
+            if (events === null) { // no se pudo leer Google Calendar: se conservan las reuniones ya importadas
+                gcalSetStatus('gcal-disconnected', '⚠ Reconectar GCal');
+                if (ind) ind.classList.add('hidden');
+                return false;
+            }
             const newMtgs = events.map(gcalEventToMeeting).filter(Boolean);
             // Guardar en localStorage para persistir entre recargas de página.
             // Firebase NO se toca para no disparar el indicador de error.
@@ -2374,11 +2403,14 @@ document.addEventListener('DOMContentLoaded',()=>{
             renderAll();
             const ts = new Date().toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
             gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length}) · ${ts}`);
+            if (ind) ind.classList.add('hidden');
+            return true;
         } catch(e) {
             console.error('GCal sync error:', e);
             gcalSetStatus('gcal-connected', '⚠ GCal error');
         }
         if (ind) ind.classList.add('hidden');
+        return false;
     };
 
     // Carga las reuniones de GCal desde localStorage y re-renderiza todos los paneles
@@ -2402,16 +2434,55 @@ document.addEventListener('DOMContentLoaded',()=>{
         }
     };
 
+    // ── Solicitud de sincronización cada hora laboral (7 a. m. – 5 p. m.) ──────────────────
+    // Se pregunta una vez por hora (7:00, 8:00 ... 17:00) si desde el inicio de esa hora no se ha sincronizado.
+    // Solo si Google Calendar ya se conectó alguna vez. "Más tarde" o sincronizar dan por atendida esa hora.
+    const GCAL_PROMPT_FROM_HOUR = 7, GCAL_PROMPT_TO_HOUR = 17;
+    const checkGcalSyncPrompt = () => {
+        const now = new Date(), h = now.getHours();
+        if (h < GCAL_PROMPT_FROM_HOUR || h > GCAL_PROMPT_TO_HOUR) return;
+        if (!localStorage.getItem('gcal_sync_ts') && !localStorage.getItem('gcal_meetings')) return; // nunca conectado (o desconectado)
+        const hourStart = new Date(now); hourStart.setMinutes(0, 0, 0);
+        const lastSync = localStorage.getItem('gcal_sync_ts');
+        if (lastSync && new Date(lastSync) >= hourStart) return;                 // ya se sincronizó en esta hora
+        const hourKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}-${h}`;
+        if (localStorage.getItem('gcal_prompt_hour') === hourKey) return;         // ya se preguntó en esta hora
+        const box = document.getElementById('gcal-sync-prompt');
+        if (!box.classList.contains('hidden')) return;
+        if (alertOpen) return;                                                    // hay un aviso de tarea/reunión en pantalla
+        if (document.querySelector('.modal:not(.hidden)')) return;                // no interrumpir un formulario abierto
+        localStorage.setItem('gcal_prompt_hour', hourKey);
+        const hm = now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('gcal-prompt-msg').textContent = `Actualiza tus reuniones desde Google Calendar · ${hm}`;
+        let last = 'Aún no se ha sincronizado.';
+        if (lastSync) {
+            const d = new Date(lastSync);
+            const same = d.toDateString() === now.toDateString();
+            last = 'Última sincronización: ' + (same
+                ? 'hoy ' + d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })
+                : d.toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+        }
+        document.getElementById('gcal-prompt-last').textContent = last;
+        document.getElementById('gcal-prompt-note').textContent = gcalTokenValid() ? '' : 'Google pedirá confirmar tu cuenta para renovar el permiso (dura 1 hora).';
+        box.classList.remove('hidden');
+    };
+    document.getElementById('gcal-prompt-later').addEventListener('click', () => document.getElementById('gcal-sync-prompt').classList.add('hidden'));
+    document.getElementById('gcal-prompt-sync').addEventListener('click', () => {
+        document.getElementById('gcal-sync-prompt').classList.add('hidden');
+        if (gcalTokenValid()) gcalSync(); else gcalLogin(); // login directo desde el clic (el navegador exige un gesto del usuario)
+    });
+    setTimeout(checkGcalSyncPrompt, 4000); // al abrir la app a mitad de hora, también se pregunta
+
     // Toggle: conectado → ofrece sincronizar ahora o desconectar | desconectado → login
     window._gcalToggle = () => {
         if (gcalToken || localStorage.getItem('gcal_meetings')) {
             // Menú de opciones cuando ya hay datos de GCal
             const opt = confirm('Google Calendar conectado.\n\n✓ Aceptar → Sincronizar ahora\n✕ Cancelar → Desconectar y borrar reuniones importadas');
             if (opt) {
-                if (gcalToken) {
+                if (gcalTokenValid()) {
                     gcalSync();
                 } else {
-                    // Token expiró — pedir nuevo login para re-sincronizar
+                    // Permiso vencido o sin iniciar sesión — pedir nuevo login para re-sincronizar
                     gcalLogin();
                 }
             } else {
