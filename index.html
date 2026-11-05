@@ -450,7 +450,14 @@
     <div id="modal-content" class="modal-content bg-white rounded-lg shadow-2xl p-6 md:p-8 w-full max-w-2xl transform scale-95 mb-6">
         <form id="taskForm">
             <input type="hidden" id="taskId">
-            <h2 id="modal-title" class="text-2xl font-bold mb-6">Nueva Tarea</h2>
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <h2 id="modal-title" class="text-2xl font-bold">Nueva Tarea</h2>
+                <div class="flex gap-2">
+                    <button type="button" id="deleteTaskBtnTop" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-md hidden">Eliminar</button>
+                    <button type="button" id="closeModalBtnTop" class="bg-gray-500 text-white font-semibold py-2 px-4 rounded-md">Cancelar</button>
+                    <button type="submit" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md">Guardar Tarea</button>
+                </div>
+            </div>
             <div class="grid grid-cols-2 gap-4 mb-4">
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Tipo</label><select id="taskType" class="w-full p-2 border border-gray-300 rounded-md"><option value="laboral">Laboral</option><option value="personal">Personal</option></select></div>
                 <div><label class="block text-sm font-medium text-gray-700 mb-1">Configuración Especial</label><label class="flex items-center h-10 border border-gray-300 rounded-md px-3 bg-gray-50 cursor-pointer"><input type="checkbox" id="isRepetitive" class="h-4 w-4 text-blue-600 rounded"><span class="ml-2 text-xs font-semibold">Tarea Repetitiva (Diaria)</span></label></div>
@@ -694,7 +701,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // ── Firebase ─────────────────────────────────────────────────────────────
     const setStatus=(state,text,title)=>{ const el=document.getElementById('fb-status'),tx=document.getElementById('fb-status-text'); el.className=`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border cursor-pointer ${state}`; tx.textContent=text; el.title=title||'Clic para ver el detalle de la sincronización'; };
-    const parseData=d=>({ tasks:d.tasks||[], meetings:d.meetings||[], allTags:Array.isArray(d.allTags)?{laboral:d.allTags,personal:[]}:(d.allTags||{laboral:[],personal:[]}), allResponsibles:Array.isArray(d.allResponsibles)?{laboral:d.allResponsibles,personal:[]}:(d.allResponsibles||{laboral:[],personal:[]}), tagColors:d.tagColors||{} });
+    const parseData=d=>({ tasks:d.tasks||[], meetings:d.meetings||[], allTags:Array.isArray(d.allTags)?{laboral:d.allTags,personal:[]}:(d.allTags||{laboral:[],personal:[]}), allResponsibles:Array.isArray(d.allResponsibles)?{laboral:d.allResponsibles,personal:[]}:(d.allResponsibles||{laboral:[],personal:[]}), tagColors:d.tagColors||{}, gcalMeetings:d.gcalMeetings, gcalSyncedAt:d.gcalSyncedAt, gcalOff:d.gcalOff });
 
     // ── DOM ──────────────────────────────────────────────────────────────────
     const $=id=>document.getElementById(id);
@@ -872,13 +879,25 @@ document.addEventListener('DOMContentLoaded',()=>{
         }
         return clone(local); // valores simples en conflicto: gana el último en escribir
     };
-    const emptyDoc=()=>({tasks:[],meetings:[],allTags:{laboral:[],personal:[]},allResponsibles:{laboral:[],personal:[]},tagColors:{}});
-    const normDoc=raw=>{const d=parseData(raw||{});return clone({tasks:d.tasks,meetings:d.meetings.filter(m=>!m.fromGcal),allTags:d.allTags,allResponsibles:d.allResponsibles,tagColors:d.tagColors||{}});};
-    const workingDoc=()=>clone({tasks,meetings:meetings.filter(m=>!m.fromGcal),allTags,allResponsibles,tagColors});
+    const emptyDoc=()=>({tasks:[],meetings:[],allTags:{laboral:[],personal:[]},allResponsibles:{laboral:[],personal:[]},tagColors:{},gcalMeetings:[],gcalSyncedAt:null,gcalOff:false});
+    const normDoc=raw=>{const d=parseData(raw||{});return clone({tasks:d.tasks,meetings:d.meetings.filter(m=>!m.fromGcal),allTags:d.allTags,allResponsibles:d.allResponsibles,tagColors:d.tagColors||{},gcalMeetings:d.gcalMeetings||[],gcalSyncedAt:d.gcalSyncedAt||null,gcalOff:!!d.gcalOff});};
+    // gcalSyncedAtMem / gcalOffMem: estado de las reuniones importadas de Google Calendar (se comparten por la nube)
+    let gcalSyncedAtMem=localStorage.getItem('gcal_sync_ts')||null,gcalOffMem=false;
+    const workingDoc=()=>clone({tasks,meetings:meetings.filter(m=>!m.fromGcal),allTags,allResponsibles,tagColors,gcalMeetings:meetings.filter(m=>m.fromGcal),gcalSyncedAt:gcalSyncedAtMem,gcalOff:gcalOffMem});
+    // Reuniones de Google Calendar: no se fusionan una a una; se toma la versión de la sincronización MÁS RECIENTE
+    // (así un dispositivo con datos viejos nunca pisa una sincronización nueva).
+    const gcalPart=d=>({gcalMeetings:clone(d?.gcalMeetings||[]),gcalSyncedAt:d?.gcalSyncedAt||null,gcalOff:!!d?.gcalOff});
+    const stripGcal=d=>{const{gcalMeetings,gcalSyncedAt,gcalOff,...rest}=d||{};return rest;};
+    const pickGcal=(local,server,base)=>{
+        const l=gcalPart(local),s=gcalPart(server),b=gcalPart(base),lt=l.gcalSyncedAt||'',st=s.gcalSyncedAt||'';
+        if(lt>st)return l;
+        if(st>lt)return s;
+        return deepEqual(l,b)?s:l; // misma sincronización: si aquí se cambió algo (p. ej. marcar "Realizada"), gana lo local
+    };
     const mergeDoc=(base,local,server)=>{
-        const m=merge3(base,local,server);
+        const m=merge3(stripGcal(base),stripGcal(local),stripGcal(server));
         ['allTags','allResponsibles'].forEach(k=>['laboral','personal'].forEach(t=>{if(Array.isArray(m[k]?.[t]))m[k][t].sort();}));
-        return m;
+        return Object.assign(m,pickGcal(local,server,base));
     };
     const persistLocal=()=>{const w=workingDoc();SYNC_KEYS.forEach(k=>localStorage.setItem(k,JSON.stringify(w[k]??{})));};
     const readBase=()=>{try{const b=JSON.parse(localStorage.getItem('cloudBase')||'null');return b&&b.data?b:null;}catch(e){return null;}};
@@ -890,7 +909,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         `Última sincronización: ${lastSyncAt?lastSyncAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'ninguna en esta sesión'}`,
         lastSyncError?`Último error: ${lastSyncError.code} (${lastSyncError.what})`:''
     ].filter(Boolean).join(' · ');
-    const showSynced=text=>{lastSyncError=null;lastSyncAt=new Date();setStatus('connected',text,syncDetail());};
+    const showSynced=text=>{lastSyncError=null;lastSyncAt=new Date();setStatus('connected',`${text} · ${tasks.length} tareas`,syncDetail());};
     const RULES_CODES=['permission-denied','unauthenticated'];
     const showProblem=()=>{
         const code=lastSyncError?.code?` · ${lastSyncError.code}`:'';
@@ -958,6 +977,21 @@ document.addEventListener('DOMContentLoaded',()=>{
         }catch(err){handleSyncError(err,'historial');}
     };
 
+    const addMissing=(dst,src)=>['laboral','personal'].forEach(t=>(src?.[t]||[]).forEach(v=>{if(!dst[t].includes(v))dst[t].push(v);}));
+    const recoverBackups=merged=>{
+        let n=0;
+        Object.keys(localStorage).filter(k=>k.startsWith('backup_local_')).forEach(k=>{
+            try{
+                const b=normDoc(JSON.parse(localStorage.getItem(k)));
+                const tIds=new Set(merged.tasks.map(t=>t.id)),mIds=new Set(merged.meetings.map(m=>m.id));
+                const bt=b.tasks.filter(t=>!tIds.has(t.id)),bm=b.meetings.filter(m=>!mIds.has(m.id));
+                merged.tasks.push(...bt);merged.meetings.push(...bm);
+                addMissing(merged.allTags,b.allTags);addMissing(merged.allResponsibles,b.allResponsibles);
+                n+=bt.length+bm.length;localStorage.removeItem(k);
+            }catch(e){}
+        });
+        return n;
+    };
     // Conexión inicial / reconexión: lee la nube, la fusiona con los cambios locales pendientes y arranca la suscripción
     const connectCloud=async()=>{
         if(!window._fbAPI){lastSyncError={code:'sin-firebase',message:'No se cargó la biblioteca de Firebase',what:'inicio'};showProblem();return false;}
@@ -965,29 +999,26 @@ document.addEventListener('DOMContentLoaded',()=>{
         let raw;
         try{raw=await withTimeout(window._fbAPI.load(),12000);}catch(err){handleSyncError(err,'lectura');return false;}
         const localDoc=workingDoc(),stored=readBase();
-        let merged,server=raw?normDoc(raw):null;
+        let merged,recovered=0,server=raw?normDoc(raw):null;
         if(!server){ // la nube está vacía: se sube lo que hay aquí
             cloudBase=emptyDoc();cloudRev=0;merged=localDoc;
         }else{
             cloudBase=clone(server);cloudRev=raw.rev||0;
             if(stored){ // caso normal: se aplican encima de la nube los cambios hechos aquí desde la última sincronización
                 merged=mergeDoc(stored.data,localDoc,server);
-            }else{      // primera vez que este dispositivo se sincroniza: manda la nube
-                merged=clone(server);
+            }else{      // primera vez que este dispositivo se sincroniza: la nube manda y se SUMAN las tareas/reuniones que solo existen aquí (nunca se descarta nada)
+                merged=Object.assign(clone(server),pickGcal(localDoc,server,null));
                 const sIds=new Set(server.tasks.map(t=>t.id)),mIds=new Set(server.meetings.map(m=>m.id));
                 const orphT=localDoc.tasks.filter(t=>!sIds.has(t.id)),orphM=localDoc.meetings.filter(m=>!mIds.has(m.id));
                 if(orphT.length||orphM.length){
-                    const names=[...orphT.map(t=>t.description),...orphM.map(m=>m.title)].slice(0,6).map(n=>'• '+n).join('\n');
-                    const total=orphT.length+orphM.length;
-                    try{localStorage.setItem('backup_local_'+new Date().toISOString().slice(0,10),JSON.stringify(localDoc));}catch(e){}
-                    if(confirm(`Este dispositivo tiene ${total} elemento(s) que no están en la nube:\n${names}${total>6?'\n• ...':''}\n\nPueden ser trabajo que nunca se sincronizó, o elementos que ya se eliminaron desde otro dispositivo.\n\nAceptar → subirlos a la nube\nCancelar → descartarlos (queda una copia de respaldo en este navegador)`)){
-                        merged.tasks.push(...orphT);merged.meetings.push(...orphM);
-                        const addMissing=(dst,src)=>['laboral','personal'].forEach(t=>(src[t]||[]).forEach(v=>{if(!dst[t].includes(v))dst[t].push(v);}));
-                        addMissing(merged.allTags,localDoc.allTags);addMissing(merged.allResponsibles,localDoc.allResponsibles);
-                    }
+                    merged.tasks.push(...orphT);merged.meetings.push(...orphM);
+                    addMissing(merged.allTags,localDoc.allTags);addMissing(merged.allResponsibles,localDoc.allResponsibles);
+                    recovered+=orphT.length+orphM.length;
                 }
             }
         }
+        // Copias de respaldo que dejó la versión anterior al "descartar": se recuperan (una sola vez)
+        recovered+=recoverBackups(merged);
         cloudLoaded=true;persistBase();
         if(!deepEqual(merged,workingDoc())){applyData(merged);persistLocal();}
         if(!deepEqual(merged,server||emptyDoc())||!server)syncDirty=true;
@@ -1004,6 +1035,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         fbUnsubscribe=window._fbAPI.subscribe(onRemote,err=>{cloudLoaded=false;handleSyncError(err,'suscripción');});
         fbUnsubscribeHist=window._fbAPI.subscribeHistory(h=>{dailyHistory={snapshots:{...(dailyHistory.snapshots||{}),...(h.snapshots||{})}};localStorage.setItem('dailyHistory',JSON.stringify(dailyHistory));updateHistBadge();},err=>handleSyncError(err,'historial'));
         showSynced('☁ Conectado');
+        if(recovered)showNotification(`☁ Se subieron ${recovered} elemento(s) que solo estaban guardados en este dispositivo.`);
         if(syncDirty)flushSync();
         return true;
     };
@@ -1070,12 +1102,22 @@ document.addEventListener('DOMContentLoaded',()=>{
     const applyData=raw=>{
         const d=parseData(raw);
         tasks=d.tasks;
-        // Preservar reuniones GCal que estén en memoria — Firebase nunca las guarda
-        // así que al recibir datos frescos de Firebase hay que re-inyectarlas.
-        const gcalInMemory=meetings.filter(m=>m.fromGcal);
-        meetings=[...d.meetings.filter(m=>!m.fromGcal),...gcalInMemory];
+        // Reuniones de Google Calendar: si el dato trae su versión (viene de la nube), se usa y se copia a la caché de este
+        // dispositivo; si no (p. ej. la copia local del arranque), se conservan las que ya estén en memoria.
+        const prevTs=gcalSyncedAtMem,prevOff=gcalOffMem;
+        let gc;
+        if(Array.isArray(d.gcalMeetings)){
+            gc=d.gcalMeetings.map(m=>({...m,fromGcal:true}));
+            gcalSyncedAtMem=d.gcalSyncedAt||null;gcalOffMem=!!d.gcalOff;
+            try{
+                if(gcalOffMem||(!gc.length&&!gcalSyncedAtMem)){localStorage.removeItem('gcal_meetings');localStorage.removeItem('gcal_sync_ts');}
+                else{localStorage.setItem('gcal_meetings',JSON.stringify(gc));if(gcalSyncedAtMem)localStorage.setItem('gcal_sync_ts',gcalSyncedAtMem);}
+            }catch(e){}
+        }else gc=meetings.filter(m=>m.fromGcal);
+        meetings=[...d.meetings.filter(m=>!m.fromGcal),...gc];
         allTags=d.allTags;allResponsibles=d.allResponsibles;tagColors=d.tagColors||{};
         checkDueDates();renderAll();
+        if((gcalSyncedAtMem!==prevTs||gcalOffMem!==prevOff)&&typeof gcalRefreshBadge==='function')gcalRefreshBadge();
     };
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1427,7 +1469,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                 const prHtml=done?`<span class="text-xs font-bold text-green-700">✔ COMPLETADA</span>`:`<div class="flex items-center gap-1 w-full"><input type="range" min="0" max="100" value="${ev.progress}" class="w-full h-1.5 rounded-lg appearance-none cursor-pointer progress-slider" data-id="${ev.id}"><span class="text-[10px]">${ev.progress}%</span></div>`;
                 const sm=dur<0.75;
                 const lc=getLastComment(ev);const stip=(ev.subtasks?.length>0||lc)?`<div class="absolute left-0 top-full mt-1 w-56 bg-white border p-2 rounded shadow-2xl text-[11px] hidden group-hover:block z-[60] space-y-2">${ev.subtasks?.length>0?`<div><p class="font-bold border-b mb-1 pb-1">Checklist:</p>${ev.subtasks.map(s=>`<div class="flex items-center gap-1.5 py-0.5"><span class="w-3 h-3 flex items-center justify-center border rounded-full text-[8px] ${s.isCompleted?'bg-green-500 border-green-600 text-white':'border-gray-300'}">${s.isCompleted?'✓':''}</span><span class="${s.isCompleted?'line-through text-gray-400':''}">${s.text}</span></div>`).join('')}</div>`:''}${lc?commentTipHtml(lc):''}</div>`:'';
-                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="resize-handle" title="Arrastra hacia abajo o arriba para cambiar la duración"></div><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${(done||sm)?'':prHtml}${stip}</div>`;
+                return`<div class="task-card group absolute p-2 rounded border ${hl} overflow-visible flex flex-col justify-center cursor-grab" draggable="true" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;" data-id="${ev.id}"><div class="resize-handle" title="Arrastra hacia abajo o arriba para cambiar la duración"></div><div class="flex justify-between items-center gap-2"><p class="font-bold ${sm?'text-[9px]':'text-[11px]'} truncate flex-grow min-w-0">${ev.description}</p>${(!done&&!sm)?`<div class="w-20 flex-shrink-0">${prHtml}</div>`:''}</div>${stip}</div>`;
             }else{
                 const hl=ev.completed?'bg-green-200 border-green-400':'bg-cyan-100 border-cyan-300 text-cyan-900';
                 return`<div class="meeting-card absolute p-2 rounded border ${hl} overflow-hidden flex flex-col justify-center" style="top:${top}px;height:${Math.max(20,height-2)}px;width:calc(${l.width}% - 4px);left:${l.left}%;z-index:10;" data-id="${ev.id}"><p class="font-bold text-[11px] truncate">${ev.title}</p></div>`;
@@ -1598,7 +1640,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     // Si al guardar la tarea quedó texto escrito sin confirmar, se incluye para no perderlo
     const commitPendingComments=()=>{applyCommentEdit();addCommentFromInput();editingCommentIdx=-1;};
     const openTaskModal=()=>openModal(dom.taskModal,dom.modalContent);
-    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];currentComments=[];editingCommentIdx=-1;commentsLoadedKeys=new Set();dom.deleteTaskBtn.classList.add('hidden');dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
+    const setTaskDeleteVisible=v=>[dom.deleteTaskBtn,document.getElementById('deleteTaskBtnTop')].forEach(b=>b.classList.toggle('hidden',!v));
+    const closeTaskModal=()=>closeModal(dom.taskModal,dom.modalContent,()=>{dom.taskForm.reset();currentSubtasks=[];currentComments=[];editingCommentIdx=-1;commentsLoadedKeys=new Set();setTaskDeleteVisible(false);dom.taskForm.taskId.value='';dueDatepicker.clear();plannedDatepicker.clear();startTP.clear();endTP.clear();dom.timeContainerModal.classList.add('hidden');dom.progressContainerModal.classList.remove('hidden');dom.dateControlsContainer.classList.remove('hidden');dom.delegatedContainer.classList.remove('hidden');});
     const openEditTaskModal=(task,initialTime=null)=>{
         dom.taskForm.reset();populateModalSelects();
         currentComments=JSON.parse(JSON.stringify(task?.comments||[]));commentsLoadedKeys=new Set(currentComments.map(commentKey));editingCommentIdx=-1;modalProgressLoaded=task?.id?(task.progress||0):0;
@@ -1607,9 +1650,9 @@ document.addEventListener('DOMContentLoaded',()=>{
             dom.modalTitle.innerText='Editar Tarea';dom.taskForm.taskId.value=task.id;dom.taskForm.taskType.value=task.type||'laboral';dom.taskForm.description.value=task.description;dom.taskForm.taskSize.value=task.taskSize||'Mediana';dom.taskForm.importance.value=task.isImportant;dom.taskForm.urgency.value=task.isUrgent;dom.taskForm.isDelegated.checked=task.isDelegated;dom.taskForm.progress.value=task.progress||0;dom.progressLabel.textContent=`${task.progress||0}%`;
             if(task.dueDate)dueDatepicker.setDate(task.dueDate);
             if(task.plannedDate){plannedDatepicker.setDate(task.plannedDate);dom.timeContainerModal.classList.remove('hidden');if(task.startTime)startTP.setDate(task.startTime);if(task.endTime)endTP.setDate(task.endTime);}else dom.timeContainerModal.classList.add('hidden');
-            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));dom.deleteTaskBtn.classList.remove('hidden');
+            dom.responsibleSelect.value=task.responsible||'';Array.from(dom.tagsSelect.options).forEach(o=>{o.selected=task.tags?.includes(o.value);});currentSubtasks=JSON.parse(JSON.stringify(task.subtasks||[]));setTaskDeleteVisible(true);
         }else{
-            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';dom.deleteTaskBtn.classList.add('hidden');
+            dom.modalTitle.innerText='Nueva Tarea';dom.taskForm.taskId.value='';dom.taskForm.taskType.value=currentView;currentSubtasks=[];dom.taskForm.importance.value='true';dom.taskForm.urgency.value='false';setTaskDeleteVisible(false);
             if(initialTime){const ts=new Date().toISOString().split('T')[0];dueDatepicker.setDate(ts);plannedDatepicker.setDate(ts);startTP.setDate(initialTime);const[h,m]=initialTime.split(':').map(Number),eh=h+1;endTP.setDate(`${eh<10?'0'+eh:eh}:${m<10?'0'+m:m}`);dom.timeContainerModal.classList.remove('hidden');}
         }
         dom.dateControlsContainer.classList.toggle('hidden',isRep);dom.delegatedContainer.classList.toggle('hidden',isRep);dom.progressContainerModal.classList.toggle('hidden',isRep);
@@ -2353,9 +2396,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     dom.viewPersonalBtn.addEventListener('click',()=>setMainView('personal'));
     dom.openModalBtn.addEventListener('click',()=>openEditTaskModal({}));
     dom.openModalBtnAllTasks.addEventListener('click',()=>openEditTaskModal({}));
-    dom.closeModalBtn.addEventListener('click',closeTaskModal);
+    [dom.closeModalBtn,document.getElementById('closeModalBtnTop')].forEach(b=>b.addEventListener('click',closeTaskModal));
     dom.taskForm.addEventListener('submit',saveTask);
-    dom.deleteTaskBtn.addEventListener('click',()=>{tasks=tasks.filter(t=>t.id!==dom.taskForm.taskId.value);saveData();renderAll();closeTaskModal();});
+    [dom.deleteTaskBtn,document.getElementById('deleteTaskBtnTop')].forEach(b=>b.addEventListener('click',()=>{tasks=tasks.filter(t=>t.id!==dom.taskForm.taskId.value);saveData();renderAll();closeTaskModal();}));
     dom.searchCompletedTasks.addEventListener('input',e=>{filters.completedTaskSearch=e.target.value;renderAllTasksList();});
     dom.toggleAllCompletedTasks.addEventListener('click',()=>{filters.showAllCompletedTasks=!filters.showAllCompletedTasks;renderAllTasksList();});
     dom.addMeetingBtn.addEventListener('click',()=>openEditMeetingModal({}));
@@ -2550,10 +2593,10 @@ document.addEventListener('DOMContentLoaded',()=>{
         localStorage.removeItem('gcal_token');
         localStorage.removeItem('gcal_meetings');
         localStorage.removeItem('gcal_sync_ts');
-        // Eliminar reuniones importadas de GCal del array local
-        const before = meetings.length;
+        // Eliminar las reuniones importadas (también de la nube, por lo que desaparecen en todos los dispositivos)
         meetings = meetings.filter(m => !m.fromGcal);
-        if (meetings.length !== before) { saveData(); renderAll(); }
+        gcalSyncedAtMem = new Date().toISOString(); gcalOffMem = true;
+        saveData(); renderAll();
         gcalSetStatus('gcal-disconnected', 'Google Calendar');
         clearInterval(gcalSyncInterval);
     };
@@ -2610,14 +2653,17 @@ document.addEventListener('DOMContentLoaded',()=>{
                 return false;
             }
             const newMtgs = events.map(gcalEventToMeeting).filter(Boolean);
-            // Guardar en localStorage para persistir entre recargas de página.
-            // Firebase NO se toca para no disparar el indicador de error.
+            // Conservar "Realizada" de las reuniones que ya estaban importadas
+            const prevDone = new Set(meetings.filter(m => m.fromGcal && m.completed).map(m => m.id));
+            newMtgs.forEach(m => { if (prevDone.has(m.id)) m.completed = true; });
+            // Caché local + estado compartido: la sincronización más reciente gana en todos los dispositivos
+            gcalSyncedAtMem = new Date().toISOString(); gcalOffMem = false;
             localStorage.setItem('gcal_meetings', JSON.stringify(newMtgs));
-            localStorage.setItem('gcal_sync_ts', new Date().toISOString());
-            // Actualizar array en memoria
+            localStorage.setItem('gcal_sync_ts', gcalSyncedAtMem);
             meetings = meetings.filter(m => !m.fromGcal);
             meetings.push(...newMtgs);
             renderAll();
+            saveData(); // se sube a Firebase para que todos los dispositivos vean las mismas reuniones
             const ts = new Date().toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
             gcalSetStatus('gcal-connected', `✓ GCal (${newMtgs.length}) · ${ts}`);
             if (ind) ind.classList.add('hidden');
@@ -2628,6 +2674,13 @@ document.addEventListener('DOMContentLoaded',()=>{
         }
         if (ind) ind.classList.add('hidden');
         return false;
+    };
+
+    // Actualiza el indicador de GCal cuando el estado cambió desde otro dispositivo
+    const gcalRefreshBadge = () => {
+        const n = meetings.filter(m => m.fromGcal).length, ts = localStorage.getItem('gcal_sync_ts');
+        if (gcalOffMem || !ts) gcalSetStatus('gcal-disconnected', 'Google Calendar');
+        else gcalSetStatus('gcal-connected', `✓ GCal (${n}) · ${new Date(ts).toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'})}`);
     };
 
     // Carga las reuniones de GCal desde localStorage y re-renderiza todos los paneles
@@ -2694,7 +2747,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     window._gcalToggle = () => {
         if (gcalToken || localStorage.getItem('gcal_meetings')) {
             // Menú de opciones cuando ya hay datos de GCal
-            const opt = confirm('Google Calendar conectado.\n\n✓ Aceptar → Sincronizar ahora\n✕ Cancelar → Desconectar y borrar reuniones importadas');
+            const opt = confirm('Google Calendar conectado.\n\n✓ Aceptar → Sincronizar ahora\n✕ Cancelar → Desconectar y borrar reuniones importadas (en TODOS los dispositivos)');
             if (opt) {
                 if (gcalTokenValid()) {
                     gcalSync();
@@ -2703,7 +2756,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                     gcalLogin();
                 }
             } else {
-                if (confirm('¿Seguro que deseas desconectar Google Calendar? Se eliminarán las reuniones importadas.')) gcalLogout();
+                if (confirm('¿Seguro que deseas desconectar Google Calendar? Se eliminarán las reuniones importadas en TODOS los dispositivos.')) gcalLogout();
             }
         } else {
             gcalLogin();
