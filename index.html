@@ -891,8 +891,13 @@ document.addEventListener('DOMContentLoaded',()=>{
         lastSyncError?`Último error: ${lastSyncError.code} (${lastSyncError.what})`:''
     ].filter(Boolean).join(' · ');
     const showSynced=text=>{lastSyncError=null;lastSyncAt=new Date();setStatus('connected',text,syncDetail());};
+    const RULES_CODES=['permission-denied','unauthenticated'];
     const showProblem=()=>{
         const code=lastSyncError?.code?` · ${lastSyncError.code}`:'';
+        if(RULES_CODES.includes(lastSyncError?.code)){ // hay internet, pero Firebase RECHAZA el acceso: es un tema de reglas de seguridad, no de conexión
+            setStatus('offline','⚠ La nube rechazó el acceso · revisar reglas','Firebase respondió, pero las reglas de seguridad de Firestore no permiten leer/guardar (permission-denied). Mientras tanto trabajas solo con la copia de este dispositivo. Clic aquí para ver cómo arreglarlo. '+syncDetail());
+            return;
+        }
         if(!cloudLoaded)setStatus('offline',`⚠ Sin conexión: copia local${code}`,'No se pudo leer la nube. Lo que ves puede estar desactualizado y NO se guardará en la nube hasta recuperar la conexión. '+syncDetail());
         else setStatus('offline',`⚠ Cambios sin guardar en la nube${code}`,'Tus cambios están guardados en este dispositivo y se subirán cuando haya conexión. '+syncDetail());
     };
@@ -903,7 +908,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
     const scheduleRetry=()=>{
         clearTimeout(retryTimer);
-        retryTimer=setTimeout(()=>{if(!cloudLoaded)connectCloud();else if(syncDirty)flushSync();},20000);
+        retryTimer=setTimeout(()=>{if(!cloudLoaded)connectCloud();else if(syncDirty)flushSync();},RULES_CODES.includes(lastSyncError?.code)?60000:20000);
     };
     const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej({code:'timeout',message:'La nube no respondió'}),ms))]);
 
@@ -1027,7 +1032,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             `• Tareas aquí: ${w.tasks.length} · en la nube (última lectura): ${cloudBase?cloudBase.tasks.length:'?'}`,
             `• Reuniones aquí: ${w.meetings.length} · en la nube: ${cloudBase?cloudBase.meetings.length:'?'}`,
             lastSyncError?`• Último error: ${lastSyncError.code} — ${lastSyncError.message} (${lastSyncError.what})`:'• Último error: ninguno',
-            lastSyncError?.code==='permission-denied'?'\nPosible causa: las reglas de seguridad de Firestore no permiten leer/escribir (revisa Firestore → Reglas en la consola de Firebase).':'',
+            RULES_CODES.includes(lastSyncError?.code)?'\nCAUSA: hay internet, pero las reglas de seguridad de Firestore no permiten leer/escribir (suele pasar cuando vencen las reglas de prueba de 30 días).\nCÓMO ARREGLARLO: console.firebase.google.com → proyecto control-tareas-85ddc → Firestore Database → pestaña «Reglas» → pega estas reglas y pulsa «Publicar»:\n\nrules_version = \'2\';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /productividad/{docId} {\n      allow read, write: if true;\n    }\n  }\n}\n\n(Luego recarga la app con Ctrl+F5.)':'',
             lastSyncError&&['unavailable','timeout'].includes(lastSyncError.code)?'\nPosible causa: sin internet o una red/firewall que bloquea firestore.googleapis.com.':''
         ].filter(l=>l!==undefined).join('\n');
         if((!cloudLoaded||syncDirty)&&confirm(msg+'\n\n¿Reintentar la conexión ahora?')){if(!cloudLoaded)connectCloud();else flushSync();}
