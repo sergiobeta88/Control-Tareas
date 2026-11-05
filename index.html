@@ -671,16 +671,19 @@
 <!-- Firebase -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+    import { initializeFirestore, doc, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
     const cfg = { apiKey:"AIzaSyAZZVxx8cWgrZS5NV1B1sxrKFA8TbQB0-c", authDomain:"control-tareas-85ddc.firebaseapp.com", projectId:"control-tareas-85ddc", storageBucket:"control-tareas-85ddc.firebasestorage.app", messagingSenderId:"319188644784", appId:"1:319188644784:web:8d567089d8eb472d009c75" };
-    const db=getFirestore(initializeApp(cfg)), REF=doc(db,"productividad","datos"), HREF=doc(db,"productividad","historial");
+    // experimentalAutoDetectLongPolling: en redes con proxy/firewall que bloquean la conexión continua de Firestore, cambia solo a un modo compatible
+    const db=initializeFirestore(initializeApp(cfg),{experimentalAutoDetectLongPolling:true}), REF=doc(db,"productividad","datos"), HREF=doc(db,"productividad","historial");
+    // Lee y escribe en UNA transacción: fn(actual) recibe lo que hay hoy en la nube y devuelve lo que se debe guardar.
+    const transact=(ref,fn)=>runTransaction(db,async tx=>{ const s=await tx.get(ref); const next=fn(s.exists()?s.data():null); tx.set(ref,next); return next; });
     window._fbAPI={
-        save:     async d=>{ await setDoc(REF,d); },
         load:     async ()=>{ const s=await getDoc(REF); return s.exists()?s.data():null; },
-        subscribe:cb=>onSnapshot(REF,s=>{ if(s.exists()) cb(s.data()); }),
-        saveHistory:async d=>{ await setDoc(HREF,d); },
-        loadHistory:async ()=>{ const s=await getDoc(HREF); return s.exists()?s.data():null; },
-        subscribeHistory:cb=>onSnapshot(HREF,s=>{ if(s.exists()) cb(s.data()); }),
+        transact: fn=>transact(REF,fn),
+        subscribe:(cb,errCb)=>onSnapshot(REF,s=>{ if(s.exists()) cb(s.data()); },e=>errCb&&errCb(e)),
+        loadHistory:     async ()=>{ const s=await getDoc(HREF); return s.exists()?s.data():null; },
+        transactHistory: fn=>transact(HREF,fn),
+        subscribeHistory:(cb,errCb)=>onSnapshot(HREF,s=>{ if(s.exists()) cb(s.data()); },e=>errCb&&errCb(e)),
     };
     window._fbReady=true;
     window.dispatchEvent(new CustomEvent("fbReady"));
@@ -690,11 +693,7 @@
 document.addEventListener('DOMContentLoaded',()=>{
 
     // ── Firebase ─────────────────────────────────────────────────────────────
-    const setStatus=(state,text)=>{ const el=document.getElementById('fb-status'),tx=document.getElementById('fb-status-text'); el.className=`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border ${state}`; tx.textContent=text; };
-    const fbSave=async data=>{ ['tasks','meetings','allTags','allResponsibles','tagColors'].forEach(k=>localStorage.setItem(k,JSON.stringify(data[k]||{}))); if(window._fbAPI){ try{ await window._fbAPI.save(data); setStatus('connected','☁ Guardado'); }catch(e){ setStatus('offline','⚠ Error'); } } };
-    const fbSaveHistory=async h=>{ localStorage.setItem('dailyHistory',JSON.stringify(h)); if(window._fbAPI){ try{ await window._fbAPI.saveHistory(h); }catch(e){} } };
-    const fbLoadHistory=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.loadHistory(); if(d?.snapshots){ localStorage.setItem('dailyHistory',JSON.stringify(d)); return d; } }catch(e){} } return JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}}; };
-    const fbLoad=async()=>{ if(window._fbAPI){ try{ const d=await window._fbAPI.load(); if(d&&Array.isArray(d.tasks)){ ['tasks','meetings','allTags','allResponsibles','tagColors'].forEach(k=>localStorage.setItem(k,JSON.stringify(d[k]||{}))); setStatus('connected','☁ Conectado'); return d; } }catch(e){ setStatus('offline','⚠ Sin conexión'); } } return { tasks:JSON.parse(localStorage.getItem('tasks'))||[], meetings:JSON.parse(localStorage.getItem('meetings'))||[], allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]}, allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]}, tagColors:JSON.parse(localStorage.getItem('tagColors'))||{} }; };
+    const setStatus=(state,text,title)=>{ const el=document.getElementById('fb-status'),tx=document.getElementById('fb-status-text'); el.className=`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full border cursor-pointer ${state}`; tx.textContent=text; el.title=title||'Clic para ver el detalle de la sincronización'; };
     const parseData=d=>({ tasks:d.tasks||[], meetings:d.meetings||[], allTags:Array.isArray(d.allTags)?{laboral:d.allTags,personal:[]}:(d.allTags||{laboral:[],personal:[]}), allResponsibles:Array.isArray(d.allResponsibles)?{laboral:d.allResponsibles,personal:[]}:(d.allResponsibles||{laboral:[],personal:[]}), tagColors:d.tagColors||{} });
 
     // ── DOM ──────────────────────────────────────────────────────────────────
@@ -810,7 +809,231 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
     // Los eventos de Google Calendar (fromGcal=true) se re-importan en cada sesión
     // y no deben guardarse en Firebase para evitar errores de escritura innecesarios.
-    const saveData=()=>fbSave({tasks,meetings:meetings.filter(m=>!m.fromGcal),allTags,allResponsibles,tagColors});
+    // ════════════════════════════════════════════════════════════════════════
+    //  SINCRONIZACIÓN CON FIREBASE — la nube es la fuente de verdad
+    // ════════════════════════════════════════════════════════════════════════
+    // Todos los dispositivos comparten UN documento. Para que un dispositivo con datos viejos (o sin
+    // conexión) nunca pise lo que otro guardó, jamás se reemplaza el documento completo:
+    //  · Se recuerda el último estado conocido de la nube (cloudBase, también en localStorage).
+    //  · Al guardar, una transacción lee lo que hay HOY en la nube y le aplica solo los cambios
+    //    hechos aquí desde cloudBase (fusión de 3 vías, por tarea y por campo).
+    //  · Mientras no se haya confirmado la nube en esta sesión, NO se escribe en ella.
+    const SYNC_KEYS=['tasks','meetings','allTags','allResponsibles','tagColors'];
+    const clone=x=>x===undefined?undefined:JSON.parse(JSON.stringify(x));
+    const deepEqual=(a,b)=>{
+        if(a===b)return true;
+        if(a===null||b===null||typeof a!=='object'||typeof b!=='object')return false;
+        if(Array.isArray(a)!==Array.isArray(b))return false;
+        if(Array.isArray(a))return a.length===b.length&&a.every((x,i)=>deepEqual(x,b[i]));
+        const ka=Object.keys(a),kb=Object.keys(b);
+        return ka.length===kb.length&&ka.every(k=>k in b&&deepEqual(a[k],b[k]));
+    };
+    const isPlainObj=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+    const itemKey=x=>isPlainObj(x)?(x.id!==undefined?'id:'+x.id:((x.date!==undefined||x.text!==undefined)?`k:${x.date}|${x.text}`:undefined)):undefined;
+    const mergeKeyed=(base,local,server)=>{
+        const mk=a=>{const m=new Map();a.forEach(x=>m.set(itemKey(x),x));return m;};
+        const B=mk(base),L=mk(local),S=mk(server),out=[];
+        for(const s of server){
+            const k=itemKey(s);
+            if(B.has(k)&&!L.has(k)){ if(deepEqual(s,B.get(k)))continue; out.push(clone(s));continue; } // eliminado aquí: se elimina salvo que la nube lo haya modificado
+            if(L.has(k))out.push(merge3(B.get(k),L.get(k),s));                                           // existe en ambos: se fusiona campo a campo
+            else out.push(clone(s));                                                                     // añadido en otro dispositivo
+        }
+        for(const l of local){const k=itemKey(l);if(!S.has(k)&&!B.has(k))out.push(clone(l));}           // añadido aquí (si la nube lo eliminó, se respeta; no se resucita)
+        return out;
+    };
+    const mergeSet=(base,local,server)=>{
+        const key=x=>JSON.stringify(x),B=new Set(base.map(key)),L=new Set(local.map(key)),S=new Set(server.map(key));
+        const out=[];
+        server.forEach(x=>{if(B.has(key(x))&&!L.has(key(x)))return;out.push(clone(x));});
+        local.forEach(x=>{if(!S.has(key(x))&&!B.has(key(x)))out.push(clone(x));});
+        return out;
+    };
+    // Fusión de 3 vías: base = último estado de la nube que este dispositivo conocía; local = lo que hay aquí; server = lo que hay HOY en la nube.
+    const merge3=(base,local,server)=>{
+        if(deepEqual(local,base))return clone(server);   // aquí no cambió nada: vale la nube
+        if(deepEqual(server,base))return clone(local);   // la nube no cambió: valen mis cambios
+        if(deepEqual(local,server))return clone(server);
+        if(Array.isArray(local)&&Array.isArray(server)){
+            const b=Array.isArray(base)?base:[],all=[...local,...server,...b];
+            if(all.every(x=>isPlainObj(x)&&itemKey(x)!==undefined))return mergeKeyed(b,local,server);
+            if(all.every(x=>x===null||typeof x!=='object'))return mergeSet(b,local,server);
+            return clone(local);
+        }
+        if(isPlainObj(local)&&isPlainObj(server)){
+            const b=isPlainObj(base)?base:{},out={};
+            for(const k of new Set([...Object.keys(local),...Object.keys(server)])){
+                const inB=k in b,inL=k in local,inS=k in server;
+                if(inL&&inS)out[k]=merge3(b[k],local[k],server[k]);
+                else if(inL){if(!inB||!deepEqual(local[k],b[k]))out[k]=clone(local[k]);}      // solo aquí: lo añadí / la nube lo quitó (se conserva si lo modifiqué)
+                else{if(!inB||!deepEqual(server[k],b[k]))out[k]=clone(server[k]);}            // solo en la nube: lo añadieron / lo quité aquí (se conserva si lo modificaron)
+            }
+            return out;
+        }
+        return clone(local); // valores simples en conflicto: gana el último en escribir
+    };
+    const emptyDoc=()=>({tasks:[],meetings:[],allTags:{laboral:[],personal:[]},allResponsibles:{laboral:[],personal:[]},tagColors:{}});
+    const normDoc=raw=>{const d=parseData(raw||{});return clone({tasks:d.tasks,meetings:d.meetings.filter(m=>!m.fromGcal),allTags:d.allTags,allResponsibles:d.allResponsibles,tagColors:d.tagColors||{}});};
+    const workingDoc=()=>clone({tasks,meetings:meetings.filter(m=>!m.fromGcal),allTags,allResponsibles,tagColors});
+    const mergeDoc=(base,local,server)=>{
+        const m=merge3(base,local,server);
+        ['allTags','allResponsibles'].forEach(k=>['laboral','personal'].forEach(t=>{if(Array.isArray(m[k]?.[t]))m[k][t].sort();}));
+        return m;
+    };
+    const persistLocal=()=>{const w=workingDoc();SYNC_KEYS.forEach(k=>localStorage.setItem(k,JSON.stringify(w[k]??{})));};
+    const readBase=()=>{try{const b=JSON.parse(localStorage.getItem('cloudBase')||'null');return b&&b.data?b:null;}catch(e){return null;}};
+
+    let cloudBase=null,cloudRev=0,cloudLoaded=false,syncDirty=false,flushTimer=null,flushing=false,retryTimer=null,lastSyncError=null,lastSyncAt=null,fbUnsubscribeHist=null;
+    const persistBase=()=>{try{localStorage.setItem('cloudBase',JSON.stringify({rev:cloudRev,data:cloudBase}));}catch(e){}};
+
+    const syncDetail=()=>[
+        `Última sincronización: ${lastSyncAt?lastSyncAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'ninguna en esta sesión'}`,
+        lastSyncError?`Último error: ${lastSyncError.code} (${lastSyncError.what})`:''
+    ].filter(Boolean).join(' · ');
+    const showSynced=text=>{lastSyncError=null;lastSyncAt=new Date();setStatus('connected',text,syncDetail());};
+    const showProblem=()=>{
+        const code=lastSyncError?.code?` · ${lastSyncError.code}`:'';
+        if(!cloudLoaded)setStatus('offline',`⚠ Sin conexión: copia local${code}`,'No se pudo leer la nube. Lo que ves puede estar desactualizado y NO se guardará en la nube hasta recuperar la conexión. '+syncDetail());
+        else setStatus('offline',`⚠ Cambios sin guardar en la nube${code}`,'Tus cambios están guardados en este dispositivo y se subirán cuando haya conexión. '+syncDetail());
+    };
+    const handleSyncError=(err,what='datos')=>{
+        lastSyncError={code:err?.code||err?.name||'error',message:String(err?.message||err),what,at:new Date().toISOString()};
+        console.error('[Sync]',what,err);
+        showProblem();scheduleRetry();
+    };
+    const scheduleRetry=()=>{
+        clearTimeout(retryTimer);
+        retryTimer=setTimeout(()=>{if(!cloudLoaded)connectCloud();else if(syncDirty)flushSync();},20000);
+    };
+    const withTimeout=(p,ms)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej({code:'timeout',message:'La nube no respondió'}),ms))]);
+
+    // Aplica a la pantalla un estado de la nube conservando los cambios locales aún no guardados
+    const adoptCloud=(newCloud,oldBase)=>{
+        const cur=workingDoc(),merged=mergeDoc(oldBase,cur,newCloud);
+        if(!deepEqual(merged,cur)){applyData(merged);persistLocal();}
+        return merged;
+    };
+
+    const scheduleFlush=()=>{clearTimeout(flushTimer);flushTimer=setTimeout(flushSync,400);}; // agrupa ráfagas de cambios (p. ej. el control de avance)
+    const saveData=()=>{persistLocal();syncDirty=true;if(!cloudLoaded&&lastSyncError)showProblem();scheduleFlush();return Promise.resolve();};
+    const flushSync=async()=>{
+        if(flushing||!window._fbAPI||!cloudLoaded)return; // sin la nube confirmada en esta sesión NO se escribe
+        flushing=true;
+        try{
+            while(syncDirty){
+                syncDirty=false;
+                const local=workingDoc();let result;
+                try{
+                    result=await window._fbAPI.transact(cur=>{
+                        const server=cur?normDoc(cur):null;
+                        const next=server?mergeDoc(cloudBase||emptyDoc(),local,server):local;
+                        next.rev=(cur?.rev||0)+1;next.updatedAt=new Date().toISOString();
+                        return next;
+                    });
+                }catch(err){syncDirty=true;handleSyncError(err,'guardado');break;}
+                const data=normDoc(result);
+                const prevBase=cloudBase;
+                cloudBase=clone(data);cloudRev=result.rev||0;persistBase();
+                adoptCloud(data,local); // trae a pantalla lo que otros dispositivos hayan cambiado, sin perder cambios hechos durante el guardado
+                if(!deepEqual(workingDoc(),data))syncDirty=true;
+                showSynced('☁ Guardado');
+            }
+        }finally{flushing=false;}
+    };
+    // Historial (un snapshot por día): solo se agregan días; nunca se reemplaza el historial completo
+    const fbSaveHistory=async(h,changedDate)=>{
+        localStorage.setItem('dailyHistory',JSON.stringify(h));
+        if(!window._fbAPI||!cloudLoaded)return;
+        try{
+            await window._fbAPI.transactHistory(cur=>{
+                const snaps={...(h.snapshots||{}),...(cur?.snapshots||{})};          // la nube manda; se agregan los días que solo existen aquí
+                if(changedDate&&h.snapshots?.[changedDate])snaps[changedDate]=h.snapshots[changedDate];
+                return{...(cur||{}),snapshots:snaps};
+            });
+        }catch(err){handleSyncError(err,'historial');}
+    };
+
+    // Conexión inicial / reconexión: lee la nube, la fusiona con los cambios locales pendientes y arranca la suscripción
+    const connectCloud=async()=>{
+        if(!window._fbAPI){lastSyncError={code:'sin-firebase',message:'No se cargó la biblioteca de Firebase',what:'inicio'};showProblem();return false;}
+        setStatus('connecting','⟳ Conectando...');
+        let raw;
+        try{raw=await withTimeout(window._fbAPI.load(),12000);}catch(err){handleSyncError(err,'lectura');return false;}
+        const localDoc=workingDoc(),stored=readBase();
+        let merged,server=raw?normDoc(raw):null;
+        if(!server){ // la nube está vacía: se sube lo que hay aquí
+            cloudBase=emptyDoc();cloudRev=0;merged=localDoc;
+        }else{
+            cloudBase=clone(server);cloudRev=raw.rev||0;
+            if(stored){ // caso normal: se aplican encima de la nube los cambios hechos aquí desde la última sincronización
+                merged=mergeDoc(stored.data,localDoc,server);
+            }else{      // primera vez que este dispositivo se sincroniza: manda la nube
+                merged=clone(server);
+                const sIds=new Set(server.tasks.map(t=>t.id)),mIds=new Set(server.meetings.map(m=>m.id));
+                const orphT=localDoc.tasks.filter(t=>!sIds.has(t.id)),orphM=localDoc.meetings.filter(m=>!mIds.has(m.id));
+                if(orphT.length||orphM.length){
+                    const names=[...orphT.map(t=>t.description),...orphM.map(m=>m.title)].slice(0,6).map(n=>'• '+n).join('\n');
+                    const total=orphT.length+orphM.length;
+                    try{localStorage.setItem('backup_local_'+new Date().toISOString().slice(0,10),JSON.stringify(localDoc));}catch(e){}
+                    if(confirm(`Este dispositivo tiene ${total} elemento(s) que no están en la nube:\n${names}${total>6?'\n• ...':''}\n\nPueden ser trabajo que nunca se sincronizó, o elementos que ya se eliminaron desde otro dispositivo.\n\nAceptar → subirlos a la nube\nCancelar → descartarlos (queda una copia de respaldo en este navegador)`)){
+                        merged.tasks.push(...orphT);merged.meetings.push(...orphM);
+                        const addMissing=(dst,src)=>['laboral','personal'].forEach(t=>(src[t]||[]).forEach(v=>{if(!dst[t].includes(v))dst[t].push(v);}));
+                        addMissing(merged.allTags,localDoc.allTags);addMissing(merged.allResponsibles,localDoc.allResponsibles);
+                    }
+                }
+            }
+        }
+        cloudLoaded=true;persistBase();
+        if(!deepEqual(merged,workingDoc())){applyData(merged);persistLocal();}
+        if(!deepEqual(merged,server||emptyDoc())||!server)syncDirty=true;
+        // historial: la nube manda; los días que solo existen aquí se conservan y se suben
+        try{
+            const hraw=await withTimeout(window._fbAPI.loadHistory(),12000);
+            const localSnaps=dailyHistory.snapshots||{},serverSnaps=hraw?.snapshots||{};
+            dailyHistory={snapshots:{...localSnaps,...serverSnaps}};
+            localStorage.setItem('dailyHistory',JSON.stringify(dailyHistory));updateHistBadge();
+            if(Object.keys(localSnaps).some(d=>!(d in serverSnaps)))fbSaveHistory(dailyHistory);
+        }catch(err){handleSyncError(err,'historial');}
+        // suscripción en tiempo real
+        if(fbUnsubscribe)fbUnsubscribe();if(fbUnsubscribeHist)fbUnsubscribeHist();
+        fbUnsubscribe=window._fbAPI.subscribe(onRemote,err=>{cloudLoaded=false;handleSyncError(err,'suscripción');});
+        fbUnsubscribeHist=window._fbAPI.subscribeHistory(h=>{dailyHistory={snapshots:{...(dailyHistory.snapshots||{}),...(h.snapshots||{})}};localStorage.setItem('dailyHistory',JSON.stringify(dailyHistory));updateHistBadge();},err=>handleSyncError(err,'historial'));
+        showSynced('☁ Conectado');
+        if(syncDirty)flushSync();
+        return true;
+    };
+    // Cambio recibido en tiempo real desde la nube (otro dispositivo, o el eco de nuestro propio guardado)
+    const onRemote=raw=>{
+        const remote=normDoc(raw);
+        if(cloudBase&&deepEqual(remote,cloudBase)){cloudRev=raw.rev||cloudRev;return;}
+        const oldBase=cloudBase||emptyDoc();
+        cloudBase=clone(remote);cloudRev=raw.rev||0;persistBase();
+        const merged=adoptCloud(remote,oldBase);
+        if(!deepEqual(merged,remote)){syncDirty=true;scheduleFlush();}
+        showSynced('☁ Sincronizado');
+    };
+    window.addEventListener('online',()=>{if(!cloudLoaded)connectCloud();else if(syncDirty)flushSync();});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&syncDirty)flushSync();else if(document.visibilityState==='visible'&&!cloudLoaded&&window._fbAPI)connectCloud();});
+    // Detalle de la sincronización al hacer clic en el indicador
+    document.getElementById('fb-status').addEventListener('click',()=>{
+        const w=workingDoc();
+        const msg=[
+            'ESTADO DE LA SINCRONIZACIÓN',
+            '',
+            `• Conexión con la nube: ${cloudLoaded?'sí':'NO'}`,
+            `• Cambios pendientes de subir: ${syncDirty?'SÍ':'no'}`,
+            `• Última sincronización: ${lastSyncAt?lastSyncAt.toLocaleString('es-CO'):'ninguna en esta sesión'}`,
+            `• Versión de la nube: ${cloudRev}`,
+            `• Tareas aquí: ${w.tasks.length} · en la nube (última lectura): ${cloudBase?cloudBase.tasks.length:'?'}`,
+            `• Reuniones aquí: ${w.meetings.length} · en la nube: ${cloudBase?cloudBase.meetings.length:'?'}`,
+            lastSyncError?`• Último error: ${lastSyncError.code} — ${lastSyncError.message} (${lastSyncError.what})`:'• Último error: ninguno',
+            lastSyncError?.code==='permission-denied'?'\nPosible causa: las reglas de seguridad de Firestore no permiten leer/escribir (revisa Firestore → Reglas en la consola de Firebase).':'',
+            lastSyncError&&['unavailable','timeout'].includes(lastSyncError.code)?'\nPosible causa: sin internet o una red/firewall que bloquea firestore.googleapis.com.':''
+        ].filter(l=>l!==undefined).join('\n');
+        if((!cloudLoaded||syncDirty)&&confirm(msg+'\n\n¿Reintentar la conexión ahora?')){if(!cloudLoaded)connectCloud();else flushSync();}
+        else if(cloudLoaded&&!syncDirty)alert(msg);
+    });
+
 
     // ── Helper: color de etiqueta ─────────────────────────────────────────────
     // Cada etiqueta puede tener un color definido por el usuario.
@@ -868,7 +1091,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     };
     const saveDaySnapshot=async dateStr=>{
         dailyHistory.snapshots[dateStr]=buildDaySnapshot(dateStr);
-        await fbSaveHistory(dailyHistory);
+        await fbSaveHistory(dailyHistory,dateStr);
         updateHistBadge();
         renderHistCalendar();
         renderHistDaysList();
@@ -2255,28 +2478,17 @@ document.addEventListener('DOMContentLoaded',()=>{
     const checkDueDates=()=>{const today=new Date();today.setHours(0,0,0,0);let upd=false;tasks.forEach(t=>{if(t.dueDate&&new Date(t.dueDate)<=new Date(today.getTime()+864e5)&&!t.isUrgent){t.isUrgent=true;upd=true;}});if(upd)saveData();};
     const initApp=async()=>{
         setStatus('connecting','⟳ Conectando...');
+        // 1) Se muestra de inmediato la copia local (puede estar desactualizada); NO se escribe nada en la nube todavía
+        const b=readBase();cloudBase=b?b.data:null;cloudRev=b?b.rev:0;
         const local={tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}};
         applyData(local);
         gcalLoadCached(); // restaurar reuniones GCal desde caché local antes de renderizar
         dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};
         updateHistBadge();
         switchView('combined');
-        const[fbData,histData]=await Promise.all([Promise.race([fbLoad(),new Promise(r=>setTimeout(()=>r(null),8000))]),fbLoadHistory()]);
-        if(fbData?.tasks){
-            applyData(fbData);
-            gcalLoadCached(); // volver a inyectar GCal después de que Firebase sobreescribe meetings
-            setStatus('connected','☁ Conectado');
-            if(window._fbAPI){
-                if(fbUnsubscribe)fbUnsubscribe();
-                fbUnsubscribe=window._fbAPI.subscribe(d=>{
-                    applyData(d);
-                    gcalLoadCached(); // mantener reuniones GCal al recibir updates en tiempo real
-                    setStatus('connected','☁ Sincronizado');
-                });
-                window._fbAPI.subscribeHistory(h=>{dailyHistory=h;updateHistBadge();});
-            }
-        }else setStatus('local','💾 Modo local');
-        if(histData?.snapshots){dailyHistory=histData;updateHistBadge();}
+        // 2) Se lee la nube, se fusiona con los cambios locales pendientes y se activa la suscripción en tiempo real
+        await connectCloud();
+        gcalLoadCached(); // volver a inyectar GCal después de aplicar los datos de la nube
         scheduleMidnightSnapshot();
     };
 
@@ -2569,7 +2781,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     setInterval(checkAllAlerts,60000);
     setInterval(updatePlannerClock,1000);
     if(window._fbReady)initApp();
-    else{window.addEventListener('fbReady',initApp,{once:true});setTimeout(()=>{if(!window._fbReady){applyData({tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}});gcalLoadCached();dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};updateHistBadge();switchView('combined');setStatus('local','💾 Modo local');scheduleMidnightSnapshot();}},5000);}
+    else{window.addEventListener('fbReady',initApp,{once:true});setTimeout(()=>{if(!window._fbReady){applyData({tasks:JSON.parse(localStorage.getItem('tasks'))||[],meetings:JSON.parse(localStorage.getItem('meetings'))||[],allTags:JSON.parse(localStorage.getItem('allTags'))||{laboral:[],personal:[]},allResponsibles:JSON.parse(localStorage.getItem('allResponsibles'))||{laboral:[],personal:[]},tagColors:JSON.parse(localStorage.getItem('tagColors'))||{}});gcalLoadCached();dailyHistory=JSON.parse(localStorage.getItem('dailyHistory'))||{snapshots:{}};updateHistBadge();switchView('combined');lastSyncError={code:'sin-firebase',message:'Firebase tardó más de 5 s en cargar (¿red o firewall bloqueando gstatic.com?)',what:'inicio'};showProblem();scheduleMidnightSnapshot();}},5000);}
 });
 </script>
 </body>
